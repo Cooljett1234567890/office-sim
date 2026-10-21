@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Synergy Labs — Living Office</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏢</text></svg>">
+</head>
+<body>
+  <div id="office-stage">
+    <canvas id="office-canvas"></canvas>
+    <div id="hud">
+      <div id="hud-clock">
+        <div class="hud-time">08:00</div>
+        <div class="hud-day">Monday · Day 1</div>
+      </div>
+      <div id="hud-event" class="hidden"></div>
+      <div id="hud-hint">Drag to pan · Scroll to zoom · Click a person to follow · Click a monitor to use their PC · Esc to exit</div>
+      <div id="hud-buttons">
+        <button id="btn-mute" title="Toggle sound">🔊</button>
+        <button id="btn-help" title="About / Help">❔</button>
+      </div>
+      <div id="follow-badge" class="hidden">Following <b>—</b> <span class="unfollow">✕</span></div>
+    </div>
+    <div id="toasts"></div>
+  </div>
+
+  <!-- Windows-style desktop overlay -->
+  <div id="desktop" class="hidden">
+    <div id="dt-wallpaper"></div>
+    <div id="dt-icons"></div>
+    <div id="dt-windows"></div>
+    <div id="dt-startmenu" class="hidden">
+      <div class="sm-header"><div class="sm-avatar">🙂</div><div class="sm-name">user</div></div>
+      <div class="sm-apps"></div>
+      <div class="sm-footer">
+        <button class="sm-power" title="Sign out (back to office)">⏻</button>
+        <span class="sm-achievements" title="Achievements">🏆 <span class="ach-count">0/0</span></span>
+      </div>
+    </div>
+    <div id="dt-taskbar">
+      <button id="dt-start" title="Start">⊞</button>
+      <div id="dt-search">🔍 Search the intranet...</div>
+      <div id="dt-tasks"></div>
+      <div id="dt-tray">
+        <span id="dt-net" title="Connected">📶</span>
+        <span id="dt-vol" title="Volume">🔊</span>
+        <div id="dt-clockwrap"><div id="dt-clock">08:00</div><div id="dt-date">Mon 01/01</div></div>
+        <div id="dt-notif-dot" class="hidden">●</div>
+      </div>
+    </div>
+    <div id="dt-notifcenter" class="hidden"></div>
+    <div id="dt-toasts"></div>
+  </div>
+
+  <div id="day-fade" class="hidden"><div class="fade-text">— Day 2 —</div></div>
+
+<script>
+  window.addEventListener("error", function (e) {
+    var st = (e.error && e.error.stack) ? String(e.error.stack) : (e.filename + ":" + e.lineno + ":" + e.colno);
+    document.title = "ERR " + (e.message || "unknown") + " @ " + st.slice(0, 300);
+    try { console.error("FATAL", st); } catch (x) {}
+  }, true);
+</script>
+<script src="js/state.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/office.js"></script>
+  <script src="js/employees.js"></script>
+  <script src="js/events.js"></script>
+  <script src="js/desktop.js"></script>
+  <script src="js/apps.js"></script>
+  <script src="js/browser.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
