@@ -140,6 +140,9 @@
             <div class="wi-card"><h3>Quick links</h3>
               <p><a href="#" data-url="intranet.wiki/ai-model">Project GLASSWING notes</a> · <a href="#" data-url="intranet.wiki/brand">Brand guidelines</a> · <a href="#" data-url="intranet.wiki/onboarding">Onboarding</a> · <a href="#" data-url="catpipe.tv">CatPipe (approved video platform™)</a></p>
             </div>
+            <div class="wi-card"><h3>🚀 Project updates</h3>
+              ${(SAVE.projects.filter(p => p.status === "active").map(p => `<p><span class="wi-tag eng">${Math.round(p.workDone / p.workRequired * 100)}%</span><b>${p.name}</b> — due day ${p.deadlineDay}</p>`).join("") || "<p>No active projects. The wiki editor is getting restless.</p>")}
+            </div>
             <div class="wi-card" style="background:#fffbe6"><h3>☕ Coffee machine status</h3>
               <p id="coffee-status">Checking…</p>
             </div>

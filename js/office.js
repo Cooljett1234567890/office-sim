@@ -73,8 +73,8 @@ const Office = (() => {
 
     // y-sorted actors
     const list = [];
-    const walkingStates = ["walk", "fire", "patrol", "leave"];
-    const everyone = [...SIM.employees, SIM.boss];
+    const walkingStates = ["walk", "fire", "patrol", "leave", "idle"];
+    const everyone = [...SIM.employees, SIM.player].filter(Boolean);
     const occ = {};
     for (const e of everyone) {
       if (e.away || walkingStates.includes(e.state)) continue;
@@ -349,7 +349,62 @@ const Office = (() => {
       // sweat drop when boss near
       if (e.sweat) { ctx.fillStyle = "#7fd4ff"; ctx.beginPath(); ctx.arc(9, -31 + Math.sin(t * 0.008) * 2, 2.2, 0, 7); ctx.fill(); }
     }
+    // accessories
+    const acc = e.accessory;
+    if (acc === "glasses") {
+      ctx.strokeStyle = "#22252e"; ctx.lineWidth = 1.2;
+      ctx.strokeRect(-6.5, -29 + headDrop, 6, 5); ctx.strokeRect(1, -29 + headDrop, 6, 5);
+      ctx.beginPath(); ctx.moveTo(-0.5, -27 + headDrop); ctx.lineTo(1, -27 + headDrop); ctx.stroke();
+    } else if (acc === "tie") {
+      ctx.fillStyle = "#b03040";
+      ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(-3, -4); ctx.lineTo(0, 4); ctx.lineTo(3, -4); ctx.closePath(); ctx.fill();
+    } else if (acc === "badge") {
+      ctx.fillStyle = "#f4f2ec"; rr(5, -8, 7, 10, 2); ctx.fill();
+      ctx.fillStyle = "#4f8cff"; ctx.fillRect(6.5, -5, 4, 2);
+    } else if (acc === "watch") {
+      ctx.fillStyle = "#d13438"; rr(10, 0, 6, 3.5, 1.5); ctx.fill();
+    }
     ctx.restore();
+  }
+
+  /* large character preview used by the creation screen & panels (same art style) */
+  function drawPersonPreview(c2, x, y, scale, o) {
+    const prevCtx = ctx;
+    try {
+      ctx = c2;
+      ctx.save();
+      ctx.translate(x, y); ctx.scale(scale, scale);
+      // body
+      ctx.fillStyle = o.body || "#4f5d8c";
+      rr(-13, -14, 26, 26, 11); ctx.fill();
+      const acc = o.accessory;
+      if (acc === "tie") { ctx.fillStyle = "#b03040"; ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(-3, -4); ctx.lineTo(0, 4); ctx.lineTo(3, -4); ctx.closePath(); ctx.fill(); }
+      else if (acc === "badge") { ctx.fillStyle = "#f4f2ec"; rr(5, -8, 7, 10, 2); ctx.fill(); ctx.fillStyle = "#4f8cff"; ctx.fillRect(6.5, -5, 4, 2); }
+      else if (acc === "watch") { ctx.fillStyle = "#d13438"; rr(10, 0, 6, 3.5, 1.5); ctx.fill(); }
+      // head
+      ctx.fillStyle = o.skin || "#f2c9a4";
+      ctx.beginPath(); ctx.arc(0, -26, 11, 0, 7); ctx.fill();
+      ctx.fillStyle = o.hair || "#2f2a33";
+      ctx.beginPath(); ctx.arc(0, -28, 11, Math.PI, 0); ctx.fill();
+      const hs = o.hairStyle || "flat";
+      if (hs === "bun") { ctx.beginPath(); ctx.arc(0, -38, 5, 0, 7); ctx.fill(); }
+      if (hs === "long") { rr(-11, -28, 6, 16, 3); ctx.fill(); rr(5, -28, 6, 16, 3); ctx.fill(); }
+      if (hs === "curly") { for (const [cx, cy] of [[-9, -33], [-3, -37], [3, -37], [9, -33]]) { ctx.beginPath(); ctx.arc(cx, cy, 4.5, 0, 7); ctx.fill(); } }
+      // face
+      ctx.fillStyle = "#22252e";
+      ctx.beginPath(); ctx.arc(-3.5, -26, 1.8, 0, 7); ctx.arc(3.5, -26, 1.8, 0, 7); ctx.fill();
+      ctx.strokeStyle = "#22252e"; ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      if (o.mood === "happy") ctx.arc(0, -21.5, 3, 0.2, Math.PI - 0.2);
+      else ctx.arc(0, -19, 2.6, Math.PI * 1.15, Math.PI * 1.85);
+      ctx.stroke();
+      if (acc === "glasses") {
+        ctx.strokeStyle = "#22252e"; ctx.lineWidth = 1.2;
+        ctx.strokeRect(-6.5, -29, 6, 5); ctx.strokeRect(1, -29, 6, 5);
+        ctx.beginPath(); ctx.moveTo(-0.5, -27); ctx.lineTo(1, -27); ctx.stroke();
+      }
+      ctx.restore();
+    } finally { ctx = prevCtx; }
   }
 
   function drawWalker(e, t) {
@@ -414,10 +469,10 @@ const Office = (() => {
 
   /* ---------- hit testing ---------- */
   function hitTest(wx, wy) {
-    const all = [...SIM.employees, SIM.boss];
+    const all = [...SIM.employees, SIM.player].filter(Boolean);
     for (const e of all) {
       if (e.away) continue;
-      const seated = e.state !== "walk" && e.state !== "fire" && e.state !== "patrol";
+      const seated = ["walk", "fire", "patrol", "leave", "idle"].includes(e.state) === false;
       if (seated) {
         const d = e.desk >= 0 ? DESKS[e.desk] : BOSS_DESK;
         // monitor area
@@ -432,5 +487,5 @@ const Office = (() => {
 
   function render(dt, t) { draw(dt, t); }
 
-  return { init, render, screenToWorld, worldToScreen, zoomAt, centerOn, cam, hitTest, drawWalker, clampCam, drawPerson, get canvas() { return canvas; } };
+  return { init, render, screenToWorld, worldToScreen, zoomAt, centerOn, cam, hitTest, drawWalker, clampCam, drawPerson, drawPersonPreview, get canvas() { return canvas; } };
 })();

@@ -324,3 +324,102 @@ const CREW_DEF = [
   ["Sana",  "Kowalski","ML Engineer",    "perfectionist",11],
 ];
 const BOSS_DEF = ["Elena", "Voss", "Engineering Director", "workaholic"];
+
+/* ==================== v2 management data ==================== */
+
+/* skills per personality (code, design, social) baseline ranges */
+const SKILL_BASE = {
+  workaholic:    { code: [55, 90], design: [25, 55], social: [20, 45] },
+  slacker:       { code: [35, 75], design: [30, 60], social: [35, 70] },
+  memeAddict:    { code: [30, 60], design: [55, 90], social: [45, 80] },
+  gamer:         { code: [45, 80], design: [25, 55], social: [30, 60] },
+  researcher:    { code: [60, 95], design: [20, 45], social: [25, 55] },
+  coffeeAddict:  { code: [40, 75], design: [30, 60], social: [35, 70] },
+  perfectionist: { code: [55, 92], design: [45, 80], social: [25, 50] },
+  social:        { code: [25, 55], design: [35, 70], social: [60, 95] },
+};
+const ROLE_SKILL_BIAS = {
+  "ML Engineer": { code: 14, design: -5, social: -5 },
+  "Backend Dev": { code: 14, design: -8, social: -5 },
+  "Frontend Dev": { code: 8, design: 10, social: 0 },
+  "QA Engineer": { code: 5, design: 0, social: 5 },
+  "Data Analyst": { code: 8, design: 0, social: 0 },
+  "Designer": { code: -15, design: 18, social: 5 },
+  "Product Manager": { code: -20, design: 5, social: 16 },
+  "ML Intern": { code: -8, design: 0, social: 0 },
+  "DevOps": { code: 10, design: -10, social: -5 },
+  "Facilities": { code: -20, design: -10, social: 10 },
+};
+const PERSONALITY_SALARY = { workaholic: 7200, perfectionist: 7000, researcher: 6800, gamer: 6000, coffeeAddict: 5900, social: 5800, memeAddict: 5600, slacker: 5400 };
+
+/* investors */
+const INVESTOR_DEFS = {
+  growth:    { name: "Marcus Vane — Vane Capital",        icon: "🚀", invested: 30000, expect: "Fast revenue growth",         style: "growth",
+               bio: "Wants the graph to go up and to the right. Considers 'caution' a personality flaw.", meet: "Every 4 days, give or take.",
+               lines: { happy: ["Numbers up. I tolerate this.", "Growth. Delicious."], angry: ["I've seen flatter curves on a heart monitor.", "Remind me why I invested in a napkin?"] } },
+  tech:      { name: "Dr. Sunniva Kolstad — Kolstad Deep", icon: "🔬", invested: 15000, expect: "Software quality & innovation", style: "tech",
+               bio: "Reads your commit logs for fun. Values craft over speed, secretly loves a good refactor.", meet: "Whenever the demos feel boring.",
+               lines: { happy: ["The architecture is… acceptable. High praise.", "I read your diff. There is hope."], angry: ["Your codebase is a haunted house.", "Quality is not a 'later' feature."] } },
+  cautious:  { name: "Beatrice Hallow — Hallow & Sons",    icon: "🛡️", invested: 5000, expect: "Financial stability",           style: "cautious",
+               bio: "Sleeps with a printed balance sheet under the pillow. Allergic to surprises.", meet: "Quarterly, unless something smells like risk.",
+               lines: { happy: ["Reserves look… reasonable. I am almost calm.", "Stability. My favorite word after 'diversify'."], angry: ["Where is the money going? Be specific.", "I've seen safer bets at a horse track."] } },
+  impatient: { name: "RicoTanaka — Angel (retired founder)", icon: "⚡", invested: 0, expect: "Deadlines hit, no excuses",      style: "impatient",
+               bio: "Shipped 14 products before you learned to walk. Allergic to 'almost done'.", meet: "Whenever a deadline is even slightly wobbly.",
+               lines: { happy: ["Done is beautiful. Well done.", "You shipped! I almost cried. Almost."], angry: ["'Almost done' is 'not done' with better marketing.", "My toaster ships faster."] } },
+};
+const INVESTOR_IDS = ["growth", "tech", "cautious", "impatient"];
+
+/* project blueprints: cost = upfront spend, budget = revenue on completion, work = points, days = deadline length */
+const PROJECT_BLUEPRINTS = [
+  { id: "glasswing10", name: "GLASSWING v1.0", desc: "Ship the flagship AI assistant to design partners.", cost: 4000, budget: 26000, work: 900, days: 7, minStaff: 2, tags: ["ai"], rep: 8 },
+  { id: "chatbot",     name: "Support-Bot Beta", desc: "A support chatbot that only occasionally gaslights customers.", cost: 2500, budget: 15000, work: 550, days: 5, minStaff: 1, tags: ["ai", "product"], rep: 5 },
+  { id: "bugfix",      name: "Critical Bug Purge", desc: "The 47 known bugs. All of them. Yes, even that one.", cost: 800, budget: 7000, work: 320, days: 3, minStaff: 1, tags: ["eng"], rep: 4 },
+  { id: "website",     name: "Internal Website", desc: "Lunch menus, wiki, and a 'Kudos' page Dana will regret.", cost: 1200, budget: 8000, work: 380, days: 4, minStaff: 1, tags: ["web"], rep: 4 },
+  { id: "model2",      name: "Model Research Sprint", desc: "Train GLASSWING-2 on the clean corpus. Do not touch the haunted batch.", cost: 6000, budget: 34000, work: 1100, days: 8, minStaff: 2, tags: ["ai", "research"], rep: 10 },
+  { id: "mobile",      name: "Mobile App MVP", desc: "An app for a company whose office has one (1) plant. Vision.", cost: 5000, budget: 28000, work: 950, days: 7, minStaff: 2, tags: ["product"], rep: 8 },
+  { id: "enterprise",  name: "Enterprise Deal Kit", desc: "SOC2 paperwork, sales decks, and one (1) branded stress ball.", cost: 3500, budget: 24000, work: 700, days: 6, minStaff: 2, tags: ["sales"], rep: 7 },
+  { id: "dogfood",     name: "Biscuit Tracker", desc: "GPS collar dashboard for the office dog. Nobody asked. Everybody needs it.", cost: 900, budget: 5000, work: 250, days: 3, minStaff: 1, tags: ["fun"], rep: 3 },
+];
+
+/* facilities & expansion */
+const ANNEX_DESKS = [
+  { x: 1620, y: 540 }, { x: 1780, y: 540 }, { x: 1620, y: 860 }, { x: 1780, y: 860 },
+];
+const DESK_PRICE = 1800;
+const FACILITIES = [
+  { id: "espresso", icon: "☕", name: "Espresso Machine Pro", cost: 2500, desc: "Coffee breaks restore +8 extra morale." },
+  { id: "arcade",   icon: "🕹️", name: "Arcade Corner",       cost: 3500, desc: "Employees can de-stress. Biscuit is undefeated at Pong." },
+  { id: "printer2", icon: "🖨️", name: "Office-grade Printer", cost: 900,  desc: "Stops the printer's low-frequency chanting." },
+  { id: "plants2",  icon: "🪴", name: "Plant Overhaul",       cost: 1200, desc: "+5 baseline morale office-wide. Photosynthesis." },
+];
+
+/* talk dialogue pools */
+const TALK_LINES = {
+  workaholic: ["I've been refactoring since 7. It's fine. I'm fine.", "Can this wait? The pipeline is at 94.2%.", "Sleep is a scheduled activity. Mine is Thursday."],
+  slacker: ["I was JUST opening the spreadsheet. Look, gridlines and everything.", "Between us? I've shipped one (1) thing today and it was a vibe.", "Is the boss around? Asking for me."],
+  memeAddict: ["Rate this meme 1-10. Carefully. My feelings are in the filename.", "The meme folder hit 1GB. HR has questions.", "I put a cat in the wireframe. It improved conversion."],
+  gamer: ["After standup I'm doing ranked. 'After standup' is a flexible concept.", "The bug isn't a bug, it's a final boss.", "My APM at work is unsustainable."],
+  researcher: ["I read a paper about your question. There are 40 pages and no answer.", "Attention is all you need. Sleep, apparently, is optional.", "The loss went NaN again. I felt that."],
+  coffeeAddict: ["Espresso number four. The hands have opinions now.", "If the machine breaks I break. Simple physics.", "Decaf is a rumor started by cowards."],
+  perfectionist: ["I reviewed the PR. Four lines. Three days. Worth it.", "The pixel is 1px off. I will not be elaborating.", "It works, but it isn't RIGHT yet."],
+  social: ["Did you hear about— okay, walk with me, it's a whole thing.", "I know everyone's coffee order. It's a burden.", "The group chat is SPICY today."],
+};
+const MEMORY_REACT = {
+  caught: ["I can explain the redstone.", "It was RESEARCH. For engagement.", "That was a spreadsheet. Emotionally."],
+  warned: ["Message received. Loudly.", "I'll be honest, that stung a little.", "Understood. Adjusting."],
+  bonus: ["A bonus?! I'm going to name my keyboard after you.", "This buys a LOT of coffee.", "Okay wow. I feel seen."],
+  promoted: ["New title, same desk. But the title!", "I promise to abuse this power responsibly.", "Put it in the wiki. Wait, no—"],
+  firedPeer: ["The desk is just… empty now. Weird.", "HR said 'restructuring'. The chair said nothing.", "I hope they land somewhere with better snacks."],
+  projectDone: ["We SHIPPED it. I'm framing the ticket.", "Team photo by the whiteboard!", "I talked to a customer. A real one."],
+  projectFailed: ["We'll get the next one. Probably.", "The deadline was a suggestion anyway… right?", "Retro was intense."],
+  bossTalk: ["Good to see you walking the floor, boss.", "Everything under control. Ish.", "You missed the meme in #memes."],
+};
+const CHAT_MEMORY_LINES = {
+  caught: ["|{target}| got caught again. At this point it's a core feature.", "Security alert: |{target}| and a video about redstone. Never seen that before 🙄", "|{target}| alt-tabbed so hard the monitor apologized."],
+  promoted: ["Congrats |{target}|!! Well earned 🎉", "|{target}| has a new title. The desk remains humble."],
+  fired: ["So… |{target}| is gone? Just like that?", "Fridge space just opened up. Silver linings.", "HR says |{target}| 'pursued other opportunities'. The Opportunities look a lot like unemployment."],
+  projectDone: ["WE SHIPPED 🚀🚀🚀 cake is not confirmed but emotionally implied", "|{project}| is OUT. I need to lie down."],
+  projectFailed: ["So that's how deadlines die.", "Retro scheduled. Bring snacks and emotional support."],
+  hired: ["Everyone welcome |{target}|! They don't know about the printer yet 🤫"],
+  firedrill: ["Fourth drill this quarter. The marshals are thriving.", "Evacuation time improved by 4 seconds. We're basically firefighters."],
+};

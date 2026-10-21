@@ -3,8 +3,33 @@
 
 const Apps = (() => {
   const registry = {};
-  const CHATS = {};   // channel -> [{who, when, text}]
+  let CHATS = {};
   let chatUnread = {};
+
+  /* persona persistence: build once (fresh), then load slim + persisted bits */
+  const Persona = {
+    ensure(emp) {
+      if (!SAVE.persona[emp.id]) {
+        const p = buildPersona(emp.personality, emp.name);
+        SAVE.persona[emp.id] = { wallpaper: p.wallpaper, ytVideo: p.ytVideo };
+        SAVE.mail[emp.id] = p.mail;
+        SAVE.browsing[emp.id] = { history: p.history };
+        p.mail = SAVE.mail[emp.id];
+        p.history = SAVE.browsing[emp.id].history;
+        emp.persona = p;
+        Persistence.markDirty();
+      } else {
+        const sp = SAVE.persona[emp.id];
+        if (!SAVE.mail[emp.id]) SAVE.mail[emp.id] = [];
+        if (!SAVE.browsing[emp.id]) SAVE.browsing[emp.id] = { history: [] };
+        emp.persona = {
+          wallpaper: sp.wallpaper, ytVideo: sp.ytVideo,
+          mail: SAVE.mail[emp.id], history: SAVE.browsing[emp.id].history,
+          sticky: [], files: {}, codeFile: null, sheet: null,
+        };
+      }
+    },
+  };
 
   function reg(id, def) { registry[id] = def; }
 
@@ -52,59 +77,85 @@ const Apps = (() => {
   }
   function hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
 
-  /* ================= EXPLORER ================= */
+  /* ================= EXPLORER (VFS-backed) ================= */
   reg("explorer", {
     title: "File Explorer", icon: "📁", w: 700, h: 460,
     render(body, w, emp) {
-      const tree = fileTree(emp);
       body.innerHTML = `<div class="explorer">
         <div class="ex-sidebar"></div>
-        <div class="ex-main"><div class="ex-crumbs">This PC</div><div class="ex-grid"></div></div>
+        <div class="ex-main"><div class="ex-crumbs">This PC</div><div class="ex-toolbar" style="display:flex;gap:6px;margin-bottom:8px"></div><div class="ex-grid"></div></div>
       </div>`;
-      const side = body.querySelector(".ex-sidebar"), grid = body.querySelector(".ex-grid"), crumbs = body.querySelector(".ex-crumbs");
+      const side = body.querySelector(".ex-sidebar"), grid = body.querySelector(".ex-grid"), crumbs = body.querySelector(".ex-crumbs"), tools = body.querySelector(".ex-toolbar");
       const ICONS = { folder: "📂", txt: "📄", code: "📜", sheet: "📊", img: "🖼️", exe: "⚙️", zip: "🗜️", url: "🔗", md: "📝" };
       let cwd = ["Desktop"];
+      let selected = null;
+
+      function entries() { return VFS.list(emp, cwd.join("/")) || {}; }
       function render() {
         crumbs.textContent = "This PC  ›  " + cwd.join("  ›  ");
         grid.innerHTML = "";
-        // up
-        if (cwd.length > 1) {
-          const up = exItem("⬆️", "..", () => { cwd.pop(); render(); });
-          grid.appendChild(up);
-        }
-        let node = tree;
-        for (const c of cwd) node = node[c] ? (Array.isArray(node[c]) ? null : null) : null;
-        // navigate: cwd[0] is root folder name
-        let items = tree[cwd[0]] || [];
-        for (let i = 1; i < cwd.length; i++) {
-          const found = items.find(f => f.name === cwd[i] && f.type === "folder");
-          items = found ? found.children : [];
-        }
-        if (!items.length) { grid.appendChild(el("div", "ex-empty", "This folder is empty. Like the coffee pot at 5pm.")); return; }
-        for (const f of items) {
-          const it = exItem(ICONS[f.type] || "📄", f.name, () => openItem(f, f.name === ".." ? null : f));
+        if (cwd.length > 1) grid.appendChild(exItem("⬆️", "..", () => { cwd.pop(); selected = null; render(); }));
+        const kids = entries();
+        const names = Object.keys(kids).sort((a, b) => (kids[a].type === "folder" ? -1 : 1) - (kids[b].type === "folder" ? -1 : 1) || a.localeCompare(b));
+        if (!names.length) { grid.appendChild(el("div", "ex-empty", "This folder is empty. Like the coffee pot at 5pm.")); }
+        for (const name of names) {
+          const f = kids[name];
+          const it = exItem(ICONS[f.type] || "📄", name, null);
+          if (selected === name) it.classList.add("sel");
+          it.style.cssText += ";background:" + (selected === name ? "rgba(79,140,255,.25)" : "");
+          it.addEventListener("click", () => { selected = name; render(); });
+          it.addEventListener("dblclick", () => { Audio2.click(); openEntry(name, f); });
           grid.appendChild(it);
         }
       }
       function exItem(icon, name, fn) {
         const d = el("div", "ex-item", `<span class="ic">${icon}</span>${name}`);
-        d.addEventListener("dblclick", () => { Audio2.click(); fn(); });
+        if (fn) d.addEventListener("dblclick", () => { Audio2.click(); fn(); });
         return d;
       }
-      function openItem(f) {
-        if (!f) { cwd.pop(); render(); return; }
-        if (f.type === "folder") { cwd.push(f.name); render(); return; }
+      function openEntry(name, f) {
+        const path = cwd.concat(name).join("/");
+        if (f.type === "folder") { cwd.push(name); selected = null; render(); return; }
+        if (f.app === "stickies") { Desktop.openApp("stickies"); return; }
         if (f.type === "url") { Desktop.openApp("browser", { url: f.url }); return; }
-        Desktop.openApp("viewer", { file: f });
+        Desktop.openApp("viewer", { file: Object.assign({ name, path }, f) });
         if (f.secret === "busy") unlockAchievement("busy");
+        if (window.Memory && Memory.discoverPath) Memory.discoverPath(path, emp);
       }
-      // sidebar
-      const sideItems = ["Desktop", "Documents", "Downloads", "Pictures"];
-      for (const s of sideItems) {
+      // sidebar roots
+      for (const s of VFS.FOLDERS) {
         const d = el("div", "ex-side-item" + (s === "Desktop" ? " active" : ""), `${s === "Desktop" ? "🖥️" : s === "Documents" ? "📄" : s === "Downloads" ? "⬇️" : "🖼️"} ${s}`);
-        d.addEventListener("click", () => { cwd = [s]; side.querySelectorAll(".ex-side-item").forEach(x => x.classList.remove("active")); d.classList.add("active"); render(); });
+        d.addEventListener("click", () => { cwd = [s]; selected = null; side.querySelectorAll(".ex-side-item").forEach(x => x.classList.remove("active")); d.classList.add("active"); render(); });
         side.appendChild(d);
       }
+      // toolbar
+      const btnNew = el("button", "", "📄 New note");
+      btnNew.addEventListener("click", () => {
+        const name = VFS.uniqueName(emp, cwd.join("/"), "note", "txt");
+        VFS.writeFile(emp, cwd.concat(name).join("/"), { type: "txt", content: "" });
+        Audio2.pop(); selected = name; render();
+      });
+      const btnFolder = el("button", "", "📁 New folder");
+      btnFolder.addEventListener("click", () => {
+        const name = VFS.uniqueName(emp, cwd.join("/"), "folder", "").replace(/\. educating$/, "");
+        VFS.createFolder(emp, cwd.concat(name).join("/"));
+        Audio2.pop(); render();
+      });
+      const btnRename = el("button", "", "✏️ Rename");
+      btnRename.addEventListener("click", () => {
+        if (!selected) { Desktop.notify("✏️", "Rename", "Select a file first (single click)."); return; }
+        const nn = prompt("New name:", selected);
+        if (nn && nn !== selected) { VFS.rename(emp, cwd.concat(selected).join("/"), nn); selected = nn; render(); }
+      });
+      const btnDel = el("button", "", "🗑 Delete");
+      btnDel.addEventListener("click", () => {
+        if (!selected) { Desktop.notify("🗑", "Delete", "Select a file first (single click)."); return; }
+        if (confirm(`Delete "${selected}"? Coworkers will not recover it.`)) {
+          VFS.remove(emp, cwd.concat(selected).join("/"));
+          Audio2.click(); selected = null; render();
+        }
+      });
+      tools.append(btnNew, btnFolder, btnRename, btnDel);
       render();
     },
   });
@@ -123,10 +174,16 @@ const Apps = (() => {
         vb.innerHTML = highlightCode(f.content, f.lang);
       } else if (f.type === "img") {
         vb.innerHTML = "";
-        const c = document.createElement("canvas");
-        c.width = 480; c.height = 320; c.style.maxWidth = "100%";
-        drawMeme(c, f.seed);
-        vb.appendChild(c);
+        if (f.dataURL) {
+          const img = new Image();
+          img.src = f.dataURL; img.style.maxWidth = "100%"; img.style.borderRadius = "8px";
+          vb.appendChild(img);
+        } else {
+          const c = document.createElement("canvas");
+          c.width = 480; c.height = 320; c.style.maxWidth = "100%";
+          drawMeme(c, f.seed);
+          vb.appendChild(c);
+        }
       } else if (f.type === "sheet") {
         Desktop.openApp("sheet", { sheet: f.sheet });
         Desktop.close && setTimeout(() => { /* close viewer */ const win = w; w.node && w.node.querySelector(".close").click(); }, 30);
@@ -134,7 +191,12 @@ const Apps = (() => {
         vb.innerHTML = `<div style="text-align:center;padding:40px 20px"><div style="font-size:44px">⚠️</div><p><b>${f.name}</b></p><p style="color:var(--win-muted)">${f.content}</p></div>`;
         Audio2.error();
       } else if (f.type === "zip") {
-        vb.innerHTML = `<div class="ex-grid">${f.children.map(c => `<div class="ex-item"><span class="ic">📄</span>${c.name}</div>`).join("")}</div>`;
+        vb.innerHTML = `<div class="ex-grid">${(f.children || []).map(c => `<div class="ex-item" data-zip="${c.name}"><span class="ic">📄</span>${c.name}</div>`).join("")}</div>`;
+        vb.querySelectorAll("[data-zip]").forEach(z => z.addEventListener("click", () => {
+          const inner = (f.children || []).find(c => c.name === z.dataset.zip);
+          vb.innerHTML = `<p style="padding:10px">${(inner && inner.content) || "(binary)"}</p>`;
+          if (f.path && f.path.includes("not_a_game") && window.Memory) Memory.discover("secret:greg", emp);
+        }));
       } else {
         vb.textContent = f.content || "(empty file)";
       }
@@ -213,7 +275,7 @@ const Apps = (() => {
     },
   });
 
-  /* ================= STICKY NOTES ================= */
+  /* ================= STICKY NOTES (VFS-persisted) ================= */
   reg("stickies", {
     title: "Sticky Notes", icon: "🗒️", w: 460, h: 420,
     render(body, w, emp) {
@@ -221,15 +283,31 @@ const Apps = (() => {
       const wrap = body.querySelector(".stickies");
       const tb = el("div", "app-toolbar");
       const add = el("button", "", "＋ New note");
-      tb.appendChild(add);
+      const del = el("button", "", "🗑 Remove last");
+      tb.append(add, del);
       body.prepend(tb);
       const colors = ["", "pink", "blue"];
-      function addNote(text, color) {
-        const n = el("div", "sticky-note " + (color || ""), text);
-        wrap.appendChild(n);
+      let notes = [];
+      const stored = VFS.readFile(emp, "Documents/notes.json");
+      try { notes = JSON.parse(stored.content) || []; } catch (e) { notes = []; }
+      function save() {
+        stored.content = JSON.stringify(notes);
+        Persistence.markDirty();
       }
-      (emp.persona.sticky.length ? emp.persona.sticky : [{ text: "remember: breathe", color: "" }]).forEach(n => addNote(n.text, n.color));
-      add.addEventListener("click", () => { addNote(pick(["buy coffee beans", "standup in 5", "email greg", "why is the printer humming", "water the plant (the sad one)"]), pick(colors)); Audio2.pop(); });
+      function render() {
+        wrap.innerHTML = "";
+        if (!notes.length) wrap.appendChild(el("div", "ex-empty", "No notes. Suspiciously organized."));
+        for (const n of notes) addNote(n.text, n.color);
+      }
+      function addNote(text, color) {
+        wrap.appendChild(el("div", "sticky-note " + (color || ""), text));
+      }
+      add.addEventListener("click", () => {
+        notes.push({ text: pick(["buy coffee beans", "standup in 5", "email greg", "why is the printer humming", "water the plant (the sad one)"]), color: pick(colors) });
+        save(); render(); Audio2.pop();
+      });
+      del.addEventListener("click", () => { notes.pop(); save(); render(); Audio2.click(); });
+      render();
     },
   });
 
@@ -286,6 +364,8 @@ const Apps = (() => {
           <span class="sep"></span>
           <button class="p-clear">🗑 Clear</button>
           <button class="p-fill">🪣 Fill</button>
+          <button class="p-save">💾 Save to Pictures</button>
+          <select class="p-open" style="background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.1);color:var(--win-fg);border-radius:7px;padding:4px 8px;font-size:12px"><option value="">Open drawing…</option></select>
         </div>
         <div class="paint-canvas-wrap"><canvas id="paintCanvas" width="560" height="360"></canvas></div>
       </div>`;
@@ -304,6 +384,37 @@ const Apps = (() => {
       body.querySelector(".p-size").addEventListener("input", e => size = +e.target.value);
       body.querySelector(".p-clear").addEventListener("click", () => { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height); Audio2.pop(); });
       body.querySelector(".p-fill").addEventListener("click", () => { ctx.fillStyle = color; ctx.fillRect(0, 0, canvas.width, canvas.height); unlockAchievement("paint"); });
+      // save / load drawings through the virtual filesystem
+      const openSel = body.querySelector(".p-open");
+      function refreshOpen() {
+        openSel.innerHTML = `<option value="">Open drawing…</option>`;
+        const kids = VFS.list(emp, "Pictures") || {};
+        for (const [name, f] of Object.entries(kids)) {
+          if (f.type === "img" && f.dataURL) {
+            const o = el("option", "", name); o.value = name;
+            openSel.appendChild(o);
+          }
+        }
+      }
+      refreshOpen();
+      body.querySelector(".p-save").addEventListener("click", () => {
+        const path = VFS.nextPaintPath(emp);
+        VFS.writeFile(emp, path, { type: "img", dataURL: canvas.toDataURL("image/png"), w: canvas.width, h: canvas.height });
+        Desktop.notify("🎨", "Drawing saved", `${path} — visible in File Explorer and after restarts.`);
+        unlockAchievement("paint");
+        refreshOpen(); Audio2.pop();
+      });
+      openSel.addEventListener("change", () => {
+        if (!openSel.value) return;
+        const f = VFS.readFile(emp, "Pictures/" + openSel.value);
+        if (f && f.dataURL) {
+          const img = new Image();
+          img.onload = () => { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(img, 0, 0, canvas.width, canvas.height); };
+          img.src = f.dataURL;
+          Audio2.click();
+        }
+        openSel.value = "";
+      });
       const pos = e => { const r = canvas.getBoundingClientRect(); return { x: (e.clientX - r.left) * canvas.width / r.width, y: (e.clientY - r.top) * canvas.height / r.height }; };
       canvas.addEventListener("mousedown", e => { drawing = true; last = pos(e); });
       document.addEventListener("mousemove", e => {
@@ -338,28 +449,67 @@ const Apps = (() => {
       body.innerHTML = `<div class="terminal"><div class="t-out"></div><div class="t-line"><span class="t-prompt">C:\\Users\\${emp.first.toLowerCase()}></span><input class="term-input" autofocus spellcheck="false"></div></div>`;
       const out = body.querySelector(".t-out"), input = body.querySelector(".term-input");
       const term = body.querySelector(".terminal");
+      let tCwd = [];
+      const termCwd = () => tCwd.join("/");
+      function updatePrompt() {
+        const p = body.querySelector(".t-prompt");
+        if (p) p.textContent = "C:\\" + emp.first.toLowerCase() + (tCwd.length ? "\\" + tCwd.join("\\") : "") + ">";
+      }
       function print(html, cls) { const d = el("div", "t-line" + (cls ? " " + cls : ""), html); out.appendChild(d); term.scrollTop = term.scrollHeight; }
       print(`SynergyShell v3.1 — type 'help'\n`);
       const cmds = {
-        help: () => print(`Available commands:\n  help, ls, cd, cat <file>, whoami, date, coffee, sudo, neofetch, matrix, exit`),
-        ls: () => print("Documents/  Downloads/  Pictures/  todo.txt  .definitely_not_procrastinating"),
-        cd: (a) => print(a ? (a === ".." ? "moved up. like your goals." : `directory '${a}' does not exist (or does it?)`) : "C:\\" + emp.first.toLowerCase()),
+        help: () => print(`Available commands:\n  help, ls, cd, cat <file>, mkdir <name>, rm <file>, whoami, date, coffee, sudo, neofetch, matrix, staff, cash, projects, jokes, exit`),
+        ls: (a) => {
+          const dir = VFS.list(emp, termCwd());
+          if (!dir) return print("not a directory", "t-err");
+          const names = Object.keys(dir).map(n => dir[n].type === "folder" ? n + "/" : n);
+          print(names.join("  ") || "(empty)");
+        },
+        cd: (a) => {
+          if (!a || a === "~") { tCwd = []; updatePrompt(); return; }
+          if (a === "..") { tCwd.pop(); updatePrompt(); return; }
+          const next = tCwd.concat(a.split("/")).filter(Boolean);
+          const node = VFS.nodeAt(VFS.get(emp), next);
+          if (node && node.type === "folder") { tCwd = next; updatePrompt(); }
+          else print(`no such directory: ${a}`, "t-err");
+        },
+        mkdir: (a) => { if (!a) return print("usage: mkdir <name>"); VFS.createFolder(emp, tCwd.concat(a.split("/")).join("/")) ? print("created " + a) : print("cannot create", "t-err"); },
+        rm: (a) => { if (!a) return print("usage: rm <file>"); VFS.remove(emp, tCwd.concat(a.split("/")).join("/")) ? print("removed. it's gone. like the weekend.") : print("no such file", "t-err"); },
         cat: (a) => {
           if (!a) return print("usage: cat <file>");
-          if (a.includes("todo")) return print(emp.persona.notes.map(n => n.text).join("\n---\n") || "it's empty. like your motivation on mondays.");
-          if (a.includes("secret")) return print(" Access granted. The cake is a spreadsheet. 🎂");
-          print(`cat: ${a}: no such file (have you tried 'ls'?)`, "t-err");
+          if (a === ".haunted" || a === ".haunted.txt") {
+            if (SIM.minutes >= 18 * 60) { Memory.discover("secret:haunted", emp); return print("the pipeline is still running. nobody started it. nobody knows how to stop it.", "t-warn"); }
+            return print(".haunted: permission denied (try after hours)");
+          }
+          const f = VFS.readFile(emp, tCwd.concat(a.split("/")).join("/"));
+          if (!f) return print(`cat: ${a}: no such file (try 'ls')`, "t-err");
+          if (f.type === "folder") return print("that's a folder. folders are shy.", "t-err");
+          if (f.app === "stickies") { try { return print(JSON.parse(f.content).map(n => "🗒 " + n.text).join("\n")); } catch (e) {} }
+          print(String(f.content || "(binary — " + f.type + ")"));
         },
         whoami: () => print(`${emp.name} — ${emp.role} — ${emp.personality.replace(/([A-Z])/g, " $1").toLowerCase()} — mood: ${emp.mood}`),
         date: () => print(`${DAYS[(SIM.day - 1) % 5]}, Day ${SIM.day} — ${fmtTime(SIM.minutes)} (office time)`),
         coffee: () => { print("brewing… ☕"); Audio2.coffeeOn(); setTimeout(() => { Audio2.coffeeOff(); print("coffee ready. productivity +2"); }, 1800); },
-        sudo: (a) => print(a ? `${emp.first} is not in the sudoers file. This incident will be reported to ${SIM.boss.first}.` : "usage: sudo <regret>"),
+        sudo: (a) => print(a ? `${emp.first} is not in the sudoers file. This incident will be reported to the boss.` : "usage: sudo <regret>"),
         neofetch: () => print(`        ______        ${emp.first}@SYNERGY-PC
        /      \\       ─────────────────
       |  o  o  |      OS: AcornOS 3.1 (Inspired Edition)
       |   /\   |      Shell: SynergyShell 3.1
        \\  --  /       CPU: Optimistic Core i9
         ------        Coffee: ${emp.personality === "coffeeAddict" ? "CRITICAL ☠️" : "nominal"}`),
+        staff: () => {
+          if (!Company.isBoss(emp)) return print("access denied: management terminal only", "t-err");
+          print(SIM.employees.map(e => `${e.name.padEnd(20)} ${e.role.padEnd(18)} $${e.salary.toLocaleString()}/mo  morale ${e.morale | 0}%  stress ${e.stress | 0}%`).join("\n"));
+        },
+        cash: () => {
+          if (!Company.isBoss(emp)) return print("access denied", "t-err");
+          print(`Cash: $${SAVE.company.cash.toLocaleString()}  |  Runway: ${Company.runwayDays()} days  |  Reputation: ${SAVE.company.reputation}`);
+        },
+        projects: () => {
+          if (!Company.isBoss(emp)) return print("access denied", "t-err");
+          print(SAVE.projects.length ? SAVE.projects.map(p => `${p.name} — ${Math.round(p.workDone / p.workRequired * 100)}% — due day ${p.deadlineDay} — ${p.status}`).join("\n") : "no active projects (bold move)");
+        },
+        jokes: () => print(Jokes.status() || "no running jokes yet. give it time."),
         matrix: () => {
           print("wake up, " + emp.first + "…", "t-warn");
           unlockAchievement("matrix");
@@ -468,13 +618,16 @@ const Apps = (() => {
     },
   });
 
-  /* ================= CHAT ================= */
+  /* ================= CHAT (persisted in SAVE.chats) ================= */
   const CHANNELS = ["general", "engineering", "random", "memes"];
   function seedChats() {
+    if (!SAVE.chats) SAVE.chats = {};
+    CHATS = SAVE.chats;
     for (const ch of CHANNELS) {
-      CHATS[ch] = (INTRANET.chatSeed[ch] || []).map(([who, text]) => ({ who, text }));
+      if (!CHATS[ch]) CHATS[ch] = (INTRANET.chatSeed[ch] || []).map(([who, text]) => ({ who, text }));
       chatUnread[ch] = 0;
     }
+    Persistence.markDirty();
   }
   reg("chat", {
     title: "Wavelength", icon: "💬", w: 720, h: 480,
@@ -541,9 +694,10 @@ const Apps = (() => {
     },
   });
   function pushChat(channel, who, text) {
-    if (!CHATS.general) seedChats();
+    if (!SAVE.chats) seedChats();
     (CHATS[channel] || CHATS.general).push({ who, text });
     chatUnread[channel] = (chatUnread[channel] || 0) + 1;
+    Persistence.markDirty();
   }
 
   /* ================= MAIL ================= */
@@ -584,6 +738,7 @@ const Apps = (() => {
           view.querySelector(".btn").addEventListener("click", () => {
             const s = view.querySelector("#ml-subj").value || "(no subject)";
             mails.unshift({ from: emp.name, subject: s, body: "Sent from my desk. Sent from my desk.", time: fmtTime(SIM.minutes) });
+            Persistence.markDirty();
             renderList();
             Desktop.notify("📨", "Mail delivered", `Your email "${s}" reached 43 inboxes. 3 people opened it. 0 replied.`);
             Audio2.chime();
@@ -595,18 +750,66 @@ const Apps = (() => {
     },
   });
 
-  /* ================= CODE EDITOR ================= */
+  /* ================= CODE EDITOR (VFS-backed) ================= */
   reg("code", {
     title: "CodeForge", icon: "📜", w: 700, h: 470,
     render(body, w, emp) {
-      const file = emp.persona.codeFile || { name: "pipeline.js", lang: "js" };
-      const src = CODE_SNIPPETS[file.lang];
+      const docs = VFS.list(emp, "Documents") || {};
+      const codeFiles = Object.keys(docs).filter(n => docs[n].type === "code");
+      if (!codeFiles.length) {
+        VFS.writeFile(emp, "Documents/scratch.js", { type: "code", lang: "js", content: CODE_SNIPPETS.js });
+        codeFiles.push("scratch.js");
+      }
+      let cur = codeFiles[0];
       body.innerHTML = `<div class="codeed">
-        <div class="codeed-tabs"><span class="codeed-tab active">${file.name}</span><span class="codeed-tab">+ new tab</span></div>
-        <div class="codeed-editor">${highlightCode(src, file.lang)}</div>
-        <div class="codeed-status"><span>⎇ main</span><span> Ln ${src.split("\n").length}, Col 1</span><span>UTF-8</span><span>${file.lang.toUpperCase()}</span><span style="color:#e5c07b">⚠ 3 TODOs, 1 haunted line</span></div>
+        <div class="codeed-tabs"></div>
+        <div class="codeed-editor" contenteditable="false"></div>
+        <div class="codeed-status"><span>⎇ main</span><span class="ed-file"></span><span>UTF-8</span><button class="btn ed-save">💾 Save (updates project quality)</button></div>
       </div>`;
-      body.querySelector(".codeed-editor").addEventListener("keydown", () => Audio2.key());
+      const tabs = body.querySelector(".codeed-tabs"), editor = body.querySelector(".codeed-editor");
+      function renderTabs() {
+        tabs.innerHTML = "";
+        for (const n of codeFiles) {
+          const t = el("span", "codeed-tab" + (n === cur ? " active" : ""), n);
+          t.addEventListener("click", () => { open(n); Audio2.click(); });
+          tabs.appendChild(t);
+        }
+        const plus = el("span", "codeed-tab", "+ new");
+        plus.addEventListener("click", () => {
+          const name = VFS.uniqueName(emp, "Documents", "untitled", "js");
+          VFS.writeFile(emp, "Documents/" + name, { type: "code", lang: "js", content: "// fresh start\n" });
+          codeFiles.push(name); open(name); Audio2.pop();
+        });
+        tabs.appendChild(plus);
+      }
+      function open(name) {
+        cur = name;
+        const f = VFS.readFile(emp, "Documents/" + name);
+        editor.innerHTML = highlightCode(f.content || "", f.lang || "js");
+        body.querySelector(".ed-file").textContent = "Documents/" + name;
+        renderTabs();
+      }
+      editor.addEventListener("input", () => {
+        const f = VFS.readFile(emp, "Documents/" + cur);
+        f.content = editor.innerText;
+        Persistence.markDirty();
+        Company.noteCodeEdit && Company.noteCodeEdit(emp);
+      });
+      body.querySelector(".ed-save").addEventListener("click", () => {
+        const f = VFS.readFile(emp, "Documents/" + cur);
+        f.content = editor.innerText;
+        Persistence.markDirty();
+        Company.noteCodeEdit && Company.noteCodeEdit(emp);
+        Desktop.notify("📜", "CodeForge", `Saved Documents/${cur}. Commit messages pending.`);
+        Audio2.pop();
+      });
+      // keep plain text (no rich paste weirdness)
+      editor.addEventListener("paste", e => {
+        e.preventDefault();
+        document.execCommand("insertText", false, (e.clipboardData || window.clipboardData).getData("text"));
+      });
+      editor.addEventListener("keydown", e => { if (e.key.length === 1) Audio2.key(); e.stopPropagation(); });
+      open(cur);
     },
   });
 
@@ -696,16 +899,24 @@ const Apps = (() => {
   /* ================= icon lists ================= */
   function desktopIcons(emp) {
     const p = emp.personality;
-    const icons = [
+    const icons = [];
+    if (emp.isPlayer) {
+      icons.push(
+        { app: "mgmt", icon: "📊", label: "SynergyHQ" },
+        { app: "ir", icon: "🤝", label: "Investors" },
+        { app: "hire", icon: "🧑‍💼", label: "Hiring" },
+      );
+    }
+    icons.push(
       { app: "explorer", icon: "📁", label: "Files" },
       { app: "browser", icon: "🌐", label: "Browser", args: { home: true } },
       { app: "mail", icon: "✉️", label: "Mail" },
       { app: "chat", icon: "💬", label: "Wavelength" },
       { app: "stickies", icon: "🗒️", label: "Stickies" },
-    ];
+    );
     if (p === "gamer") icons.push({ app: "mines", icon: "💣", label: "Mines" });
     if (p === "memeAddict") icons.push({ app: "paint", icon: "🎨", label: "Paint" });
-    if (p === "workaholic" || p === "researcher") icons.push({ app: "code", icon: "📜", label: "CodeForge" });
+    if (p === "workaholic" || p === "researcher" || emp.isPlayer) icons.push({ app: "code", icon: "📜", label: "CodeForge" });
     if (p === "slacker") icons.push({ app: "busysim", icon: "📈", label: "ProductivityPro" });
     if (p === "coffeeAddict") icons.push({ app: "calculator", icon: "🧮", label: "Calc", args: {} });
     icons.push({ app: "terminal", icon: "⌨️", label: "Terminal" });
@@ -713,7 +924,13 @@ const Apps = (() => {
     return icons;
   }
   function startMenuApps(emp) {
-    return [
+    const apps = [];
+    if (emp.isPlayer) apps.push(
+      { app: "mgmt", icon: "📊", label: "SynergyHQ" },
+      { app: "ir", icon: "🤝", label: "Investor Relations" },
+      { app: "hire", icon: "🧑‍💼", label: "Hiring Board" },
+    );
+    apps.push(
       { app: "browser", icon: "🌐", label: "Browser" },
       { app: "mail", icon: "✉️", label: "Mail" },
       { app: "chat", icon: "💬", label: "Wavelength" },
@@ -724,14 +941,14 @@ const Apps = (() => {
       { app: "terminal", icon: "⌨️", label: "Terminal" },
       { app: "mines", icon: "💣", label: "Minesweeper" },
       { app: "code", icon: "📜", label: "CodeForge" },
-      { app: "busysim", icon: "📈", label: "ProductivityPro" },
       { app: "settings", icon: "⚙️", label: "Settings" },
-    ];
+    );
+    return apps;
   }
 
   function officeNote(kind, text) { officeToast(text); }
 
   function init() { seedChats(); }
 
-  return { registry, init, pushChat, officeNote, desktopIcons, startMenuApps, CHATS, fileTree };
+  return { registry, init, pushChat, officeNote, desktopIcons, startMenuApps, fileTree, Persona, get CHATS() { return CHATS; } };
 })();

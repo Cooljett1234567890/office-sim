@@ -365,3 +365,47 @@ button { font-family: inherit; cursor: pointer; }
   #dt-startmenu { width: calc(100vw - 16px); }
   #dt-search { display: none; }
 }
+
+/* ================= v2 UI: character creator, interactions, management ================= */
+#charcreator { position: fixed; inset: 0; z-index: 9000; background: radial-gradient(120% 100% at 50% 0%, #16203a 0%, #0b0d14 70%); display: flex; align-items: center; justify-content: center; }
+.cc-card { width: min(860px, 94vw); max-height: 92vh; overflow: auto; background: rgba(24,26,34,.96); border: 1px solid rgba(255,255,255,.1); border-radius: 18px; padding: 26px 30px; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+.cc-title { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+.cc-sub { color: var(--win-muted); font-size: 13.5px; margin-bottom: 18px; line-height: 1.5; }
+.cc-body { display: flex; gap: 24px; flex-wrap: wrap; }
+.cc-preview { background: #141724; border-radius: 14px; padding: 12px; text-align: center; border: 1px solid rgba(255,255,255,.07); }
+.cc-name-tag { margin-top: 8px; font-weight: 600; font-size: 14px; color: #9cc3ff; }
+.cc-controls { flex: 1; min-width: 340px; }
+.cc-controls .set-row label { color: var(--win-muted); }
+.cc-controls select.inp { width: 100%; }
+.cc-start { width: 100%; margin-top: 18px; padding: 13px; font-size: 15px; font-weight: 600; border: none; border-radius: 12px; background: linear-gradient(90deg, var(--accent), var(--accent2)); color: #fff; }
+.cc-start:hover { filter: brightness(1.12); }
+
+#interact-panel { position: fixed; z-index: 8000; width: 340px; max-height: 78vh; overflow: auto; background: var(--glass); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; padding: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.ip-head b { font-size: 15px; }
+.ip-role { display: block; font-size: 11.5px; color: var(--win-muted); margin-top: 2px; }
+.ip-body { display: flex; gap: 10px; margin: 10px 0; }
+.ip-stats { font-size: 12px; line-height: 1.55; color: var(--win-fg); }
+.ip-stats .bar, .hq-progress { display: inline-block; width: 110px; height: 8px; background: rgba(255,255,255,.1); border-radius: 99px; overflow: hidden; vertical-align: middle; margin: 0 4px; }
+.hq-progress { display: block; width: 100%; height: 10px; margin: 6px 0; }
+.hq-progress span { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+.ip-dialogue { background: rgba(255,255,255,.05); border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; }
+.ip-line { font-size: 12.5px; font-style: italic; color: #cdd6f4; padding: 2px 0; }
+.ip-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.ip-actions button { font-size: 11.5px; padding: 5px 9px; }
+.ip-danger { border-color: rgba(229,115,115,.5)!important; color: #ff8a80!important; }
+.ip-sub { margin-top: 10px; font-size: 12.5px; line-height: 1.5; background: rgba(255,255,255,.04); border-radius: 10px; padding: 8px 12px; }
+.ip-stars button { font-size: 16px; padding: 3px 7px; }
+
+.wi-card-dark { background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.07); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; font-size: 13px; line-height: 1.5; }
+.hq-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.hq-stat { background: rgba(255,255,255,.045); border-radius: 12px; padding: 12px; text-align: center; }
+.hq-num { font-size: 21px; font-weight: 700; }
+.hq-num.neg { color: #ff8a80; }
+.hq-lbl { font-size: 11px; color: var(--win-muted); margin-top: 2px; }
+.hq-muted { color: var(--win-muted); font-size: 12px; }
+.hq-tag { display: inline-block; background: rgba(79,140,255,.18); color: #9cc3ff; font-size: 10.5px; padding: 1px 8px; border-radius: 99px; margin-left: 4px; }
+.hq-tag.red { background: rgba(229,115,115,.18); color: #ff8a80; }
+.hq-alerts { background: rgba(229,115,115,.12); border: 1px solid rgba(229,115,115,.3); color: #ffb4ab; border-radius: 10px; padding: 10px 14px; margin-top: 12px; font-size: 12.5px; line-height: 1.6; }
+.roster-row .ip-actions { margin-top: 6px; }
+.hq-hud { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); background: var(--glass); border: 1px solid rgba(255,255,255,.08); border-radius: 12px; padding: 6px 16px; font-size: 13px; backdrop-filter: blur(8px); pointer-events: none; }
+.hq-hud b { color: #9cc3ff; }

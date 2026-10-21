@@ -56,12 +56,13 @@ const Events = (() => {
     // random events during work hours (~1-2 per day)
     if (SIM.minutes > 10 * 60 + 45 && SIM.minutes < 17 * 60) {
       if (Math.random() < dt * 0.0025) {
-        const pool = ["fire", "outage", "coffee", "catch"];
+        const pool = ["fire", "outage", "coffee", "tipoff", "argument"];
         const choice = pick(pool);
         if (choice === "fire" && flag("fire")) startFire();
         else if (choice === "outage" && flag("outage")) startOutage();
         else if (choice === "coffee" && flag("coffee")) startCoffeeBroke();
-        else if (choice === "catch") bossCatch();
+        else if (choice === "tipoff") startTipoff();
+        else if (choice === "argument") startArgument();
       }
     }
 
@@ -102,15 +103,16 @@ const Events = (() => {
     fireDrillReturn = performance.now() + 15000;
     Audio2.alarm();
     banner("🚨 FIRE DRILL — proceed to the exit!", 15000);
-    for (const e of [...SIM.employees, SIM.boss]) if (!e.away) Employees.startFireDrill(e);
+    for (const e of SIM.employees) if (!e.away) Employees.startFireDrill(e);
     officeToast("This is not a drill. (It is a drill.)", "red");
     if (window.Apps && Apps.pushChat) Apps.pushChat("general", "Dana Whitfield", "FIRE DRILL. OUT. NOW. 🚨");
+    Memory.record("drill", [], {});
   }
   function endFire() {
     const wasFire = SIM.event && SIM.event.type === "fire";
     SIM.event = null;
     if (wasFire) {
-      for (const e of [...SIM.employees, SIM.boss]) if (!e.away) Employees.endFireDrill(e);
+      for (const e of SIM.employees) if (!e.away) Employees.endFireDrill(e);
       unlockAchievement("fireDrill");
       banner("✅ Drill complete — back to work", 4000);
     }
@@ -149,32 +151,50 @@ const Events = (() => {
     officeToast("Coffee restored. Productivity up 340%.");
   }
 
-  /* ---------- boss catches a watcher ---------- */
-  function bossCatch() {
-    const watchers = SIM.employees.filter(e => !e.away && (e.state === "youtube" || e.state === "asleep"));
+  /* ---------- coworker tipoff / workplace drama ---------- */
+  function startTipoff() {
+    const watchers = SIM.employees.filter(e => !e.away && e.state === "youtube");
     if (!watchers.length) return;
     const victim = pick(watchers);
-    const b = SIM.boss;
-    if (!b || b.away || b.state === "walk") return;
-    const d = Employees.deskPos(victim);
-    walkTo2(b, { x: d.x, y: d.y + 62 }, "patrol");
-    officeToast(`👀 ${b.first} is heading toward ${victim.first}'s desk...`);
-    if (window.Apps && Apps.pushChat) Apps.pushChat("random", "Wren Osei", "boss is beelining for " + victim.first + ". thoughts and prayers 🙏");
+    const reporter = pick(SIM.employees.filter(e => e !== victim && e.status === "active"));
+    if (!reporter) return;
+    officeToast(`👀 ${reporter.first} whispers: "${victim.first} is watching ${pick(["redstone tutorials", "a Minecraft series", "'just one video'", "coding (allegedly)"])} again."`);
+    Memory.bumpJoke("caughtScreens", victim.id);
+    Apps.pushChat(pick(["random", "memes"]), reporter.name, `${victim.first} is doing 'research' again. This is my witness statement. 📝`);
   }
-  function walkTo2(e, target, intent) {
-    // reuse employees' internal router via a tiny shim
-    e._extTarget = { target, intent };
-    Employees.extWalk && Employees.extWalk(e, target, intent);
+
+  function startArgument() {
+    const active = SIM.employees.filter(e => e.status === "active" && !e.away);
+    if (active.length < 2) return;
+    // arguments happen between people who already don't get along (or rarely, randomly)
+    let a = null, b = null;
+    for (let i = 0; i < 14; i++) {
+      const x = pick(active), y = pick(active);
+      if (x !== y && Memory.affinity(x, y) < -5) { a = x; b = y; break; }
+    }
+    if (!a) { a = pick(active); b = pick(active.filter(e => e !== a)); if (!b) return; }
+    Memory.adjustAffinity(a, b, -6);
+    Memory.record("argument", [a, b], { topic: pick(["the thermostat", "tabs vs spaces", "the last slice of pizza", "whose turn it is to feed Biscuit", "a semicolon"]) });
+    Apps.pushChat(pick(["random", "engineering"]), a.name, `${b.first} and I are having a professional disagreement. In the Parking Lot of Feelings.`);
+    if (Math.random() < 0.5) Apps.pushChat("random", pickColleagueName(), "someone said the thermostat argument got 'loud'. HR has been notified. HR is Dana. Dana is tired.");
+  }
+
+  function pickColleagueName() {
+    const list = SIM.employees.filter(x => x.status === "active");
+    return list.length ? pick(list).name : "Dana Whitfield";
   }
 
   /* ---------- birthday ---------- */
   function startBirthday() {
+    const alive = SIM.employees.filter(e => !e.away && e.status === "active");
+    if (!alive.length) { birthdayDone = true; birthdayEnd = SIM.minutes + 30; return; }
     birthdayDone = true;
-    birthdayPerson = pick(SIM.employees.filter(e => !e.away));
+    birthdayPerson = pick(alive);
     birthdayEnd = SIM.minutes + 90;
     banner(`🎂 It's ${birthdayPerson.first}'s birthday!`, 9000);
     officeToast(`🎂 It's ${birthdayPerson.name}'s birthday! Cake in the kitchen. Biscuit is not invited (again).`, "gold");
     Audio2.chime();
+    Memory.record("birthday", [birthdayPerson], {});
     if (window.Apps && Apps.pushChat) Apps.pushChat("general", "Faye Haddad", `🎂🎂🎂 HAPPY BIRTHDAY ${birthdayPerson.first.toUpperCase()} 🎂🎂🎂 cake in the kitchen!`);
     Apps2.note("bday", `Birthday celebration in the kitchen for ${birthdayPerson.first}. Cake status: loaded.`);
     setTimeout(() => unlockAchievement("birthday"), 4000);
@@ -182,17 +202,34 @@ const Events = (() => {
 
   /* ---------- day rollover ---------- */
   function endDay() {
+    if (endDay._running) return;
+    endDay._running = true;
+    // end-of-day systems run on the closing day
+    Company.progressDay();
+    Company.endOfDayFinance();
+    Investors.dailyDrift();
     const fade = $("#day-fade");
     fade.classList.add("show");
     setTimeout(() => {
       SIM.day++; SIM.minutes = 8 * 60;
+      SAVE.day = SIM.day; SAVE.minutes = SIM.minutes;
       Employees.resetDay();
-      for (const k of Object.keys(fired)) { /* keep history, flags are day-keyed */ }
+      Company.employeeDayTick();
       SIM.event = null; meetingActive = false; birthdayDone = false;
+      // check player promises
+      for (const pr of SAVE.promises.filter(p => !p.met)) {
+        if (SIM.day > pr.dueDay) {
+          pr.broken = true;
+          Memory.record("promiseBroken", [], { text: pr.text });
+          for (const inv of SAVE.investors) inv.confidence = clamp(inv.confidence - (pr.investor === inv.id ? 12 : 3), 0, 100);
+          officeToast(`💔 Promise broken: "${pr.text}". Investors noticed.`, "red");
+        }
+      }
+      Persistence.write();
       fade.querySelector(".fade-text").textContent = `— Day ${SIM.day} —`;
-      setTimeout(() => fade.classList.remove("show"), 900);
+      setTimeout(() => { fade.classList.remove("show"); endDay._running = false; }, 900);
       writeSave();
-      officeToast(`☀️ Day ${SIM.day}. ${DAYS[(SIM.day - 1) % 5]}. Fresh coffee. Fresh bugs.`);
+      officeToast(`☀️ Day ${SIM.day}. ${DAYS[(SIM.day - 1) % 5]}. Cash: $${Math.round(SAVE.company.cash).toLocaleString()}. Fresh coffee. Fresh bugs.`);
     }, 1300);
   }
 

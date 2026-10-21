@@ -23,11 +23,26 @@ const Employees = (() => {
   }
 
   function create() {
-    SIM.employees = CREW_DEF.map(d => makeEmp(d, d[4]));
-    const b = makeEmp(BOSS_DEF, -1);
-    b.desk = -1; b.isBoss = true; b.x = BOSS_DESK.x; b.y = BOSS_DESK.y + 48;
-    b.arrive = 7 * 60 + 50; b.leaveAt = 18 * 60 + 20;
-    SIM.boss = b;
+    if (SAVE.employees && SAVE.employees.length) {
+      SIM.employees = SAVE.employees.map(s => hydrate(s)).filter(e => e.status === "active");
+    } else {
+      SIM.employees = CREW_DEF.map(d => Company.makeEmployee({ first: d[0], last: d[1], role: d[2], personality: d[3], desk: d[4] }));
+      for (const e of SIM.employees) e.persona = null;
+      Persistence.markDirty();
+    }
+  }
+
+  /* rebuild a runtime employee from its saved persistent slice */
+  function hydrate(s) {
+    const e = Company.makeEmployee({
+      id: s.id,
+      first: s.first, last: s.last, role: s.role, personality: s.personality, desk: s.desk,
+      skills: s.skills, salary: s.salary, palette: s.palette, hairStyle: s.hairStyle,
+    });
+    for (const k of ["morale", "stress", "status", "assignment", "memories", "productivity", "attendance", "warned", "promoted", "hiredDay", "sickToday", "accessory", "caught"]) {
+      if (s[k] !== undefined) e[k] = s[k];
+    }
+    return e;
   }
 
   const deskPos = e => (e.desk >= 0 ? DESKS[e.desk] : BOSS_DESK);
@@ -81,9 +96,8 @@ const Employees = (() => {
   function decide(e) {
     const ai = e.ai;
     const r = Math.random();
-    const minute = SIM.minutes;
     // schedule overrides
-    if (e.personality === "workaholic" && r < ai.pWork) return actWork(e);
+    if ((e.personality === "workaholic" || (e.pWorkBoost || 0) > 0) && r < ai.pWork + (e.pWorkBoost || 0)) return actWork(e);
     let acc = 0;
     const table = [["coffee", ai.pCoffee], ["window", ai.pWindow], ["chat", ai.pChat], ["youtube", ai.pYoutube], ["sleep", ai.pSleep], ["walk", ai.pWalk], ["work", ai.pWork]];
     for (const [act, w] of table) {
@@ -139,23 +153,23 @@ const Employees = (() => {
   }
 
   function bossNear(e) {
-    const b = SIM.boss;
-    if (!b || b.state === "away") return false;
-    return Math.hypot(b.x - e.x, b.y - e.y) < 250;
+    const p = SIM.player;
+    if (!p) return false;
+    return Math.hypot(p.x - e.x, p.y - e.y) < 130;
   }
 
   /* ---------- update ---------- */
   function update(dt) {
-    const all = [...SIM.employees, SIM.boss];
+    const all = [...SIM.employees].filter(Boolean);
     for (const e of all) {
       // arrival
       if (e.away) {
-        if (SIM.minutes >= e.arrive && SIM.minutes < e.leaveAt && (!SIM.event || SIM.event.type !== "firerest")) {
+        if (!e.sickToday && SIM.minutes >= e.arrive && SIM.minutes < e.leaveAt) {
           e.away = false;
           const d = deskPos(e);
           e.x = SPOTS.exit.x + rnd(-40, 40); e.y = SPOTS.exit.y - 10;
           walkTo(e, seatPos(e), "arrive");
-          if (e.isBoss) Apps2.note("boss", `${e.name} just walked in. Look busy. Or don't. They can't tell.`);
+          if (Math.random() < 0.25) Apps2.note("arrive", `${e.name} just walked in.`);
         }
         continue;
       }
@@ -165,8 +179,8 @@ const Employees = (() => {
         Apps2.note("leave", `${e.name} is heading home for the day. 👋`);
         continue;
       }
-      // boss intimidation
-      if (!e.isBoss && e.state !== "pretend" && e.state !== "fire" && e.state !== "meeting") {
+      // boss intimidation — the player IS the boss now
+      if (e.state !== "pretend" && e.state !== "fire" && e.state !== "meeting") {
         if (bossNear(e) && (e.state === "youtube" || e.state === "asleep")) {
           startPretend(e);
         }
@@ -181,6 +195,7 @@ const Employees = (() => {
         case "walk": stepWalk(e, dt); break;
         case "desk": case "youtube": case "pretend":
           e.timer += dt; e.decisionTimer -= dt;
+          if (e.pWorkBoost > 0) e.pWorkBoost = Math.max(0, e.pWorkBoost - dt * 0.01);
           if (Math.random() < dt * 6) Audio2.type();
           if (e.state === "youtube" && Math.random() < dt * 0.05) e.mood = pick(["happy", "happy", "neutral"]);
           if (e.decisionTimer <= 0) { if (!e.isBoss) decide(e); else e.decisionTimer = 9999; }
@@ -236,16 +251,21 @@ const Employees = (() => {
           break;
       }
     }
-    // boss patrol
-    updateBoss(SIM.boss, dt);
+    // sick employees just… aren't around. lunch/leaving handled above
   }
 
   function actYoutubeResumeOrWork(e) { e.state = "youtube"; e.screen = "video"; e.decisionTimer = rnd(15, 40); }
 
   function startPretend(e) {
+    const wasSlacking = e.state === "youtube" || e.state === "asleep";
     e.state = "pretend"; e.screen = "sheet"; e.screenModeTyping = true;
     e.pretendTimer = rnd(14, 26); e.mood = "panicked"; e.sweat = true; e.caught++;
-    if (e.caught === 1) Apps2.note("caught", `${e.first} just alt-tabbed at the speed of light. ${pick(BOSS_CATCH_LINES)}`);
+    if (wasSlacking) {
+      // the boss physically walked in on them — record it and feed the joke machine
+      Memory.record(e.caught > 1 ? "caughtRepeat" : "caught", [e], { day: SIM.day });
+      Jokes.bumpJoke("caughtScreens", e.id);
+      Apps2.note("caught", `You walked in on ${e.first} — the alt-tab was audible.`);
+    }
   }
 
   function camDistVol(e) {
@@ -336,10 +356,11 @@ const Employees = (() => {
 
   /* day reset */
   function resetDay() {
-    for (const e of [...SIM.employees, SIM.boss]) {
+    for (const e of [...SIM.employees, SIM.player]) {
+      if (!e) continue;
       e.away = true; e.state = "away"; e.path = null; e.screen = "code";
-      e.mood = "neutral"; e.caught = 0; e.partner = null; e.pretendTimer = 0;
-      e.arrive = 8 * 60 + rnd(0, 50); e.lunchAt = 12 * 60 + rnd(0, 45); e.leaveAt = 17 * 60 + rnd(10, 55);
+      e.mood = "neutral"; e.partner = null; e.pretendTimer = 0; e.lunched = false; e.mugHot = false;
+      if (e.isPlayer) { e.away = false; e.state = "desk"; e.x = seatPos(e).x; e.y = seatPos(e).y; continue; }
       e.x = seatPos(e).x; e.y = seatPos(e).y;
     }
   }

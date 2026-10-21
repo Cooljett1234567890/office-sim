@@ -54,6 +54,34 @@
     <div id="dt-toasts"></div>
   </div>
 
+  <div id="charcreator" class="hidden">
+    <div class="cc-card">
+      <div class="cc-title">👋 Welcome to Synergy Labs</div>
+      <div class="cc-sub">The founder just retired to run a llama farm. You're the new boss.<br>Create the character who will run this company.</div>
+      <div class="cc-body">
+        <div class="cc-preview"><canvas id="ccCanvas" width="220" height="260"></canvas><div class="cc-name-tag" id="ccNameTag">New Boss</div></div>
+        <div class="cc-controls">
+          <div class="set-row"><label>Character name</label><input type="text" id="ccName" class="inp" maxlength="22" placeholder="e.g. Jordan Vale"></div>
+          <div class="set-row"><label>Personality (dialogue flavor)</label>
+            <select id="ccPersonality" class="inp">
+              <option value="workaholic">First one in, last one out</option>
+              <option value="social">Walks the floor, knows everyone</option>
+              <option value="perfectionist">Details, details, details</option>
+              <option value="coffeeAddict">Powered by the machine</option>
+            </select></div>
+          <div class="set-row"><label>Skin tone</label><div class="accent-dots" id="ccSkin"></div></div>
+          <div class="set-row"><label>Hair style</label><div class="wp-grid" id="ccHair"></div></div>
+          <div class="set-row"><label>Hair color</label><div class="accent-dots" id="ccHairColor"></div></div>
+          <div class="set-row"><label>Outfit color</label><div class="accent-dots" id="ccOutfit"></div></div>
+          <div class="set-row"><label>Accessory</label><div class="wp-grid" id="ccAcc"></div></div>
+        </div>
+      </div>
+      <button id="ccStart" class="cc-start">Start Day 1 as the Boss →</button>
+    </div>
+  </div>
+
+  <div id="interact-panel" class="hidden"></div>
+
   <div id="day-fade" class="hidden"><div class="fade-text">— Day 2 —</div></div>
 
 <script>
@@ -63,14 +91,20 @@
     try { console.error("FATAL", st); } catch (x) {}
   }, true);
 </script>
+<script src="js/persist.js"></script>
 <script src="js/state.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/data.js"></script>
+  <script src="js/vfs.js"></script>
   <script src="js/office.js"></script>
   <script src="js/employees.js"></script>
+  <script src="js/memory.js"></script>
+  <script src="js/company.js"></script>
+  <script src="js/player.js"></script>
   <script src="js/events.js"></script>
   <script src="js/desktop.js"></script>
   <script src="js/apps.js"></script>
+  <script src="js/mgmt.js"></script>
   <script src="js/browser.js"></script>
   <script src="js/main.js"></script>
 </body>

@@ -7,51 +7,30 @@ const SIM = {
   speed: 60,                // 1 real second = 1 game minute
   paused: false,
   employees: [],
-  boss: null,
+  boss: null,               // deprecated NPC boss — the player is the boss now
+  player: null,             // live player entity (Player module)
   event: null,              // active event object
   activeEventName: "",
   desktopOpenFor: null,     // employee id in desktop mode
   followId: null,
   selectedEmployee: null,
+  mode: "office",           // office | desktop
 };
 
-const SAVE_KEY = "synergy.office.v1";
-
-const DEFAULT_SAVE = () => ({
-  day: 1, minutes: 8 * 60,
-  achievements: [],
-  stats: { pcsOpened: 0, uniquePcs: [], videosWatched: 0, secretsFound: [] },
-  settings: { sound: true, wallpaper: 0, accent: 0, dark: true },
-  notifLog: [],
-});
-
-let SAVE = DEFAULT_SAVE();
+let SAVE = null;
+let SAVE_FRESH = false;
 
 function loadSave() {
-  try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (raw) {
-      const data = JSON.parse(raw);
-      SAVE = Object.assign(DEFAULT_SAVE(), data);
-      SAVE.stats = Object.assign(DEFAULT_SAVE().stats, data.stats || {});
-      SAVE.settings = Object.assign(DEFAULT_SAVE().settings, data.settings || {});
-    }
-  } catch (e) { /* corrupt save — start fresh */ }
+  const res = Persistence.load();
+  SAVE = res.save;
+  SAVE_FRESH = res.fresh;
   SIM.day = SAVE.day; SIM.minutes = SAVE.minutes;
+  if (res.corrupted) officeToast("⚠️ Previous save was corrupted — a backup was kept and a fresh company was started.");
 }
 
-let saveTimer = 0;
-function tickSave(dt) {
-  saveTimer += dt;
-  if (saveTimer > 10) { saveTimer = 0; writeSave(); }
-}
-function writeSave() {
-  try {
-    SAVE.day = SIM.day; SAVE.minutes = SIM.minutes;
-    localStorage.setItem(SAVE_KEY, JSON.stringify(SAVE));
-  } catch (e) { /* storage full/blocked */ }
-}
-window.addEventListener("beforeunload", writeSave);
+function writeSave() { Persistence.write(); }
+
+window.addEventListener("beforeunload", () => Persistence.write());
 
 /* ---------- achievements ---------- */
 const ACHIEVEMENTS = [
@@ -70,6 +49,15 @@ const ACHIEVEMENTS = [
   { id: "mine",      icon: "💣", name: "Defused",        desc: "Win a game of Minesweeper." },
   { id: "birthday",  icon: "🎂", name: "Office Party",   desc: "Attend an office birthday." },
   { id: "snooze",    icon: "😴", name: "Do Not Disturb", desc: "Catch someone asleep at their desk." },
+  { id: "boss",      icon: "👔", name: "The New Boss",    desc: "Create your character and take over Synergy Labs." },
+  { id: "hired",     icon: "🧑‍💼", name: "Welcome Aboard",  desc: "Hire your first employee." },
+  { id: "fired",     icon: "📦", name: "HR Moment",       desc: "Fire an employee. They will remember." },
+  { id: "shipped",   icon: "🚀", name: "It Ships!",       desc: "Complete a company project." },
+  { id: "funding",   icon: "💰", name: "Dilated Rounds",  desc: "Convince an investor to give you more money." },
+  { id: "rich",      icon: "🏦", name: "Runway Flex",     desc: "Hold $100,000 in company cash at once." },
+  { id: "joke",      icon: "🤣", name: "Office Lore",     desc: "Let a running joke reach its final stage." },
+  { id: "secret1",   icon: "🕵️", name: "Something's Off", desc: "Note your first contradiction around the office." },
+  { id: "secretall", icon: "🧩", name: "Corporate Archaeologist", desc: "Uncover every hidden thread in the company." },
 ];
 
 function unlockAchievement(id) {
@@ -91,3 +79,10 @@ const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = arr => arr[(Math.random() * arr.length) | 0];
 const fmtTime = m => { const h = Math.floor(m / 60) % 24, mm = Math.floor(m % 60); return String(h).padStart(2, "0") + ":" + String(mm).padStart(2, "0"); };
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+/* entity lookups */
+function empById(id) { return SIM.employees.find(e => e.id === id) || null; }
+function getEmp(id) {
+  return SIM.employees.find(e => e.id === id) || (SIM.player && SIM.player.id === id ? SIM.player : null);
+}
+function relKey(a, b) { return Math.min(a, b) + ":" + Math.max(a, b); }
