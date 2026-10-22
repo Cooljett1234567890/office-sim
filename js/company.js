@@ -237,9 +237,21 @@ const Company = (() => {
     const grade = p.quality >= 78 ? "S" : p.quality >= 64 ? "A" : p.quality >= 48 ? "B" : "C";
     const mult = { S: 1.25, A: 1.1, B: 1.0, C: 0.8 }[grade];
     const payout = Math.round(p.budget * mult);
+    p.grade = grade; p.onTime = SIM.day <= p.deadlineDay;
     SAVE.company.cash += payout;
     SAVE.company.reputation = clamp(SAVE.company.reputation + p.rep, 0, 100);
     SAVE.company.monthlyRevenue = Math.round(SAVE.company.monthlyRevenue * 1.03 + p.rep * 40);
+    // investor promises tied to this project: met on time = trust up, late = they remember
+    for (const pr of SAVE.promises) {
+      if (pr.met || pr.broken || pr.projectId !== p.id) continue;
+      if (p.onTime) {
+        pr.met = true; pr.metDay = SIM.day;
+        const inv = SAVE.investors.find(i => i.id === pr.investor);
+        if (inv) inv.confidence = clamp(inv.confidence + 8, 0, 100);
+        officeToast(`🤝 Promise kept: "${pr.text}". ${inv ? INVESTOR_DEFS[inv.id].name.split("—")[0].trim() + " is impressed." : ""}`, "gold");
+        Memory.record("promiseKept", [], { text: pr.text });
+      }
+    }
     Memory.record("projectDone", p.assigned.map(id => empById(id)).filter(Boolean), { projectName: p.name, team: p.assigned, grade, payout });
     Memory.chatAboutEvent({ type: "projectDone", actors: p.assigned, data: { projectName: p.name } });
     for (const id of p.assigned) { const e = empById(id); if (e) { e.assignment = null; e.morale = clamp(e.morale + 12, 0, 100); e.stress = clamp(e.stress - 10, 0, 100); } }
@@ -274,13 +286,20 @@ const Company = (() => {
     if (net >= 0) return "∞";
     return Math.max(0, Math.floor(SAVE.company.cash / -net));
   }
-  function dailyRevenue() { return SAVE.company.monthlyRevenue / 22 * qualityFactor(); }
-  function dailyExpenses() { return salariesPerDay() + SAVE.company.operatingCost; }
+  function dailyRevenue() {
+    return SAVE.company.monthlyRevenue / 22 * qualityFactor() + (window.Product ? Product.revenuePerDay() : 0);
+  }
+  function dailyExpenses() { return salariesPerDay() + SAVE.company.operatingCost + (window.Product ? Product.costPerDay() : 0); }
 
   function endOfDayFinance() {
+    /* GLASSWING product economy: day-keyed and idempotent (never applied twice for one day) */
+    let prod = { revenue: 0, costs: 0, skipped: true };
+    if (window.Product) prod = Product.dailyTick(SIM.day);
+    if (SAVE.company.lastFinanceDay === SIM.day) { Persistence.markDirty(); return; }
+    SAVE.company.lastFinanceDay = SIM.day;
     const rev = dailyRevenue(), exp = dailyExpenses();
     SAVE.company.cash += rev - exp;
-    SAVE.company.ledger.push({ day: SIM.day, revenue: Math.round(rev), expenses: Math.round(exp), cash: Math.round(SAVE.company.cash) });
+    SAVE.company.ledger.push({ day: SIM.day, revenue: Math.round(rev), expenses: Math.round(exp), cash: Math.round(SAVE.company.cash), productRevenue: Math.round(prod.revenue || 0), productCosts: Math.round(prod.costs || 0) });
     if (SAVE.company.ledger.length > 40) SAVE.company.ledger.shift();
     if (SAVE.company.cash >= 100000) unlockAchievement("rich");
     if (SAVE.company.cash < 0) {
@@ -395,7 +414,7 @@ const Company = (() => {
 })();
 
 /* ---------- investors (SAVE.investors) ---------- */
-const Investors = (() => {
+  const Investors = (() => {
   function evaluate(what, payload) {
     // adjust confidence from real company state; called after meaningful events
     const cash = SAVE.company.cash;
@@ -403,10 +422,10 @@ const Investors = (() => {
     for (const inv of SAVE.investors) {
       let d = 0;
       switch (inv.style) {
-        case "growth":    d += what === "projectDone" ? 6 : what === "projectFailed" ? -9 : what === "funding" ? 4 : what === "overdrawn" ? -14 : 0; break;
-        case "tech":      d += what === "projectDone" ? (payload && payload.grade === "S" ? 9 : payload && payload.grade === "C" ? -2 : 4) : what === "projectFailed" ? -7 : what === "code" ? 2 : 0; break;
-        case "cautious":  d += what === "overdrawn" ? -16 : cash > 30000 ? 3 : cash < 8000 ? -6 : 0; break;
-        case "impatient": d += what === "projectDone" ? 7 : what === "projectFailed" ? -12 : what === "deadlineMissed" ? -8 : 0; break;
+        case "growth":    d += what === "projectDone" ? 6 : what === "projectFailed" ? -9 : what === "funding" ? 4 : what === "overdrawn" ? -14 : what === "launch" ? 7 : 0; break;
+        case "tech":      d += what === "projectDone" ? (payload && payload.grade === "S" ? 9 : payload && payload.grade === "C" ? -2 : 4) : what === "projectFailed" ? -7 : what === "code" ? 2 : what === "launch" ? ((payload && payload.quality >= 70) ? 8 : (payload && payload.quality >= 55) ? 3 : -4) : what === "bugs" ? -4 : 0; break;
+        case "cautious":  d += what === "overdrawn" ? -16 : what === "launch" ? ((payload && payload.model === "enterprise") ? 4 : -2) : what === "bugs" ? -3 : cash > 30000 ? 3 : cash < 8000 ? -6 : 0; break;
+        case "impatient": d += what === "projectDone" ? 7 : what === "projectFailed" ? -12 : what === "deadlineMissed" ? -8 : what === "launch" ? 5 : 0; break;
       }
       if (rep > 60) d += 0.5; if (rep < 35) d -= 0.5;
       inv.confidence = clamp(inv.confidence + d, 0, 100);
@@ -438,13 +457,27 @@ const Investors = (() => {
     }
   }
 
+  const FUNDING_COOLDOWN = 3; // days between funding asks per investor
+
+  function fundingCooldownLeft(inv) {
+    return Math.max(0, FUNDING_COOLDOWN - (SIM.day - (inv.lastFundingDay || -99)));
+  }
+
   function requestFunding(inv, amount) {
     const def = INVESTOR_DEFS[inv.id];
+    amount = clamp(Math.round(amount || 10000), 1000, 100000);
+    const cool = fundingCooldownLeft(inv);
+    if (cool > 0) {
+      return { ok: false, line: `${def.name.split("—")[0].trim()}: "We literally spoke about money ${cool} day${cool === 1 ? "" : "s"} ago. My assistants are unionizing."`, cooldown: cool, hint: "Ask again in " + cool + " day(s)." };
+    }
+    inv.lastFundingDay = SIM.day;
     const avgConf = inv.confidence;
     const rep = SAVE.company.reputation;
     const growth = SAVE.company.monthlyRevenue;
     let chance = 0.15 + avgConf / 130 + rep / 260 + Math.min(growth, 90000) / 400000;
     if (inv.withdrew) chance *= 0.3;
+    if (amount > 25000) chance *= 0.45;
+    else if (amount > 10000) chance *= 0.7;
     const ok = Math.random() < chance;
     if (ok) {
       const given = Math.round(amount * (0.8 + Math.random() * 0.5));
@@ -483,7 +516,59 @@ const Investors = (() => {
     Persistence.markDirty();
   }
 
-  function averageConfidence() { return SAVE.investors.reduce((s, i) => s + i.confidence, 0) / SAVE.investors.length; }
+  function averageConfidence() { return SAVE.investors.reduce((s, i) => s + i.confidence, 0) / Math.max(1, SAVE.investors.length); }
 
-  return { evaluate, requestFunding, dailyDrift, averageConfidence, checkWarnings };
+  return { evaluate, requestFunding, fundingCooldownLeft, dailyDrift, averageConfidence, checkWarnings };
 })();
+
+/* ---------- financial report (Reports tab + printer) ---------- */
+Company.reportText = function () {
+  const c = SAVE.company;
+  const rev = Company.dailyRevenue(), exp = Company.dailyExpenses();
+  const done = SAVE.projects.filter(p => p.status === "done");
+  const lines = [];
+  lines.push(`SYNERGY LABS — FINANCIAL SNAPSHOT — Day ${SIM.day} (${DAYS[(SIM.day - 1) % 5]})`);
+  lines.push("".padEnd(52, "="));
+  lines.push(`Cash on hand ........... $${Math.round(c.cash).toLocaleString()}`);
+  lines.push(`Reputation .............. ${c.reputation}/100`);
+  lines.push(`Daily revenue ........... $${Math.round(rev).toLocaleString()}`);
+  lines.push(`Daily expenses .......... $${Math.round(exp).toLocaleString()}`);
+  lines.push(`Net per day ............. $${Math.round(rev - exp).toLocaleString()}`);
+  lines.push(`Runway .................. ${Company.runwayDays()} days`);
+  lines.push(`Avg investor confidence . ${Math.round(Investors.averageConfidence())}%`);
+  lines.push("");
+  lines.push(`ACTIVE PROJECTS (${Company.activeProjects().length})`);
+  for (const p of Company.activeProjects()) {
+    const pct = Math.min(100, Math.round(p.workDone / p.workRequired * 100));
+    lines.push(`  ${p.name} — ${pct}% · quality ${p.quality | 0} · due day ${p.deadlineDay} · team ${p.assigned.length}/${p.minNeeded || 1} · payout $${p.budget.toLocaleString()}`);
+  }
+  if (!Company.activeProjects().length) lines.push("  (none — bold strategy)");
+  lines.push("");
+  lines.push(`SHIPPED (${done.length}) · failed ${SAVE.projects.filter(p => p.status === "failed").length}`);
+  for (const p of done.slice(-6)) lines.push(`  ${p.name} — grade ${p.grade || "?"} — ${p.onTime ? "on time" : "LATE"} — $${Math.round(p.budget * ({ S: 1.25, A: 1.1, B: 1.0, C: 0.8 }[p.grade || "B"] || 1)).toLocaleString()}`);
+  if (window.Product && Product.status()) {
+    const s = Product.summary();
+    lines.push("");
+    lines.push("GLASSWING PRODUCT ECONOMY");
+    if (!s.launched) lines.push("  Status: pre-launch.");
+    else {
+      lines.push(`  Model .................. ${s.modelName}`);
+      lines.push(`  Customers .............. ${s.customers.toLocaleString()} (MRR ~$${Math.round(s.mrr).toLocaleString()})`);
+      lines.push(`  Yesterday revenue ...... $${Math.round(s.dayRevenue).toLocaleString()} · costs $${Math.round(s.dayCosts).toLocaleString()}`);
+      lines.push(`  Lifetime revenue ....... $${Math.round(s.totalRevenue).toLocaleString()} · costs $${Math.round(s.totalCosts).toLocaleString()} · profit $${Math.round(s.totalProfit).toLocaleString()}`);
+      lines.push(`  Satisfaction ${Math.round(s.satisfaction)}% · bugs ${s.bugs} · marketing ${s.marketing.toFixed(2)}`);
+    }
+  }
+  lines.push("");
+  lines.push(`INVESTORS`);
+  for (const inv of SAVE.investors) {
+    lines.push(`  ${INVESTOR_DEFS[inv.id].name.split("—")[0].trim()} — ${inv.withdrew ? "WITHDRAWN" : "active"} · confidence ${inv.confidence | 0}% · invested $${(inv.invested || 0).toLocaleString()}`);
+  }
+  const open = SAVE.promises.filter(p => !p.met && !p.broken);
+  if (open.length) {
+    lines.push("");
+    lines.push(`OPEN PROMISES (${open.length})`);
+    for (const pr of open) lines.push(`  "${pr.text}" — due day ${pr.dueDay}${SIM.day > pr.dueDay ? " (OVERDUE)" : ""}`);
+  }
+  return lines.join("\n");
+};

@@ -33,10 +33,10 @@ function defaultSave() {
       reputation: 50,
     },
     investors: [
-      { id: "growth",  invested: 30000, confidence: 62, style: "growth",  metDay: 0, promises: [], history: [] },
-      { id: "tech",    invested: 15000, confidence: 70, style: "tech",    metDay: 0, promises: [], history: [] },
-      { id: "cautious",invested: 5000,  confidence: 58, style: "cautious",metDay: 0, promises: [], history: [] },
-      { id: "impatient",invested: 0,    confidence: 50, style: "impatient", metDay: 0, promises: [], history: [] },
+      { id: "growth",  invested: 30000, confidence: 62, style: "growth",  metDay: 0, promises: [], history: [], lastMeetingDay: 0, lastFundingDay: 0, lastTopic: null, skepticalUntil: 0, withdrew: false, invested_at_withdraw: 0, warned: false },
+      { id: "tech",    invested: 15000, confidence: 70, style: "tech",    metDay: 0, promises: [], history: [], lastMeetingDay: 0, lastFundingDay: 0, lastTopic: null, skepticalUntil: 0, withdrew: false, invested_at_withdraw: 0, warned: false },
+      { id: "cautious",invested: 5000,  confidence: 58, style: "cautious",metDay: 0, promises: [], history: [], lastMeetingDay: 0, lastFundingDay: 0, lastTopic: null, skepticalUntil: 0, withdrew: false, invested_at_withdraw: 0, warned: false },
+      { id: "impatient",invested: 0,    confidence: 50, style: "impatient", metDay: 0, promises: [], history: [], lastMeetingDay: 0, lastFundingDay: 0, lastTopic: null, skepticalUntil: 0, withdrew: false, invested_at_withdraw: 0, warned: false },
     ],
     projects: [],                 // see Company.newProject
     nextProjectId: 1,
@@ -60,6 +60,8 @@ function defaultSave() {
     expandedDesks: 0,             // purchased annex desks
     facilities: [],               // ids of purchased facilities
     promises: [],                 // player promises to investors {id, text, dueDay, met:false}
+    product: null,                // GLASSWING product launch state (biz.js) — null until launch planning begins
+    meetings: [],                 // investor meeting history {id, day, investor, topic, over, caught, dConf}
   };
 }
 
@@ -98,6 +100,30 @@ const Persistence = (() => {
     }
     if (!Array.isArray(d.company.ledger)) d.company.ledger = [];
     if (!Array.isArray(d.events)) d.events = [];
+    /* normalize nested records added after v2 shipped (old saves lack these) */
+    for (const inv of (d.investors || [])) {
+      inv.promises = Array.isArray(inv.promises) ? inv.promises : [];
+      inv.history = Array.isArray(inv.history) ? inv.history : [];
+      inv.withdrew = !!inv.withdrew;
+      inv.invested_at_withdraw = inv.invested_at_withdraw || 0;
+      inv.warned = !!inv.warned;
+      inv.metDay = inv.metDay || 0;
+      inv.lastMeetingDay = inv.lastMeetingDay || 0;
+      inv.lastFundingDay = inv.lastFundingDay || 0;
+      inv.lastTopic = inv.lastTopic || null;
+      inv.skepticalUntil = inv.skepticalUntil || 0;
+    }
+    if (!Array.isArray(d.meetings)) d.meetings = [];
+    if (d.product) {
+      d.product = Object.assign({
+        launched: false, launchDay: null, monetization: null, earlyAccess: false,
+        quality: 50, customers: 0, satisfaction: 70, bugs: 0, marketing: 0,
+        totalRevenue: 0, totalCosts: 0, totalProfit: 0, dayRevenue: 0, dayCosts: 0,
+        history: [], lastProcessedDay: 0, lastActionDay: {}, lastBugReportDay: 0,
+      }, d.product);
+      if (!Array.isArray(d.product.history)) d.product.history = [];
+      d.product.lastActionDay = d.product.lastActionDay || {};
+    }
     d.version = SAVE_VERSION;
     return d;
   }

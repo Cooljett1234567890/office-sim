@@ -54,6 +54,8 @@ const ACHIEVEMENTS = [
   { id: "fired",     icon: "📦", name: "HR Moment",       desc: "Fire an employee. They will remember." },
   { id: "shipped",   icon: "🚀", name: "It Ships!",       desc: "Complete a company project." },
   { id: "funding",   icon: "💰", name: "Dilated Rounds",  desc: "Convince an investor to give you more money." },
+  { id: "launch",    icon: "🛰️", name: "First Light",     desc: "Launch GLASSWING to the public." },
+  { id: "mrr",       icon: "📈", name: "Recurring Revenue", desc: "Grow GLASSWING to $20,000 a month." },
   { id: "rich",      icon: "🏦", name: "Runway Flex",     desc: "Hold $100,000 in company cash at once." },
   { id: "joke",      icon: "🤣", name: "Office Lore",     desc: "Let a running joke reach its final stage." },
   { id: "secret1",   icon: "🕵️", name: "Something's Off", desc: "Note your first contradiction around the office." },

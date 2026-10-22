@@ -216,13 +216,32 @@ const Events = (() => {
       Employees.resetDay();
       Company.employeeDayTick();
       SIM.event = null; meetingActive = false; birthdayDone = false;
-      // check player promises
-      for (const pr of SAVE.promises.filter(p => !p.met)) {
+      // check player promises: fulfill kinds with checkable conditions, break overdue ones
+      for (const pr of SAVE.promises.filter(p => !p.met && !p.broken)) {
         if (SIM.day > pr.dueDay) {
+          if (pr.safety && SAVE.company.cash >= (pr.cashAt || 0)) {
+            pr.met = true; pr.metDay = SIM.day;
+            const inv0 = SAVE.investors.find(i => i.id === pr.investor);
+            if (inv0) inv0.confidence = clamp(inv0.confidence + 8, 0, 100);
+            officeToast(`🤝 Promise kept: "${pr.text}".`, "gold");
+            continue;
+          }
           pr.broken = true;
           Memory.record("promiseBroken", [], { text: pr.text });
           for (const inv of SAVE.investors) inv.confidence = clamp(inv.confidence - (pr.investor === inv.id ? 12 : 3), 0, 100);
           officeToast(`💔 Promise broken: "${pr.text}". Investors noticed.`, "red");
+          continue;
+        }
+        let met = false;
+        if (pr.kind === "revenue" && !pr.safety && (SAVE.company.monthlyRevenue + (window.Product ? Product.mrr() : 0)) >= (pr.target || Infinity)) met = true;
+        if (pr.kind === "launch" && window.Product && Product.status()) met = true;
+        if (pr.kind === "quality") { const q = Company.projectById(pr.projectId); if (q && q.quality >= (pr.target || Infinity)) met = true; }
+        if (met) {
+          pr.met = true; pr.metDay = SIM.day;
+          const inv0 = SAVE.investors.find(i => i.id === pr.investor);
+          if (inv0) inv0.confidence = clamp(inv0.confidence + 8, 0, 100);
+          Memory.record("promiseKept", [], { text: pr.text });
+          officeToast(`🤝 Promise kept: "${pr.text}".`, "gold");
         }
       }
       Persistence.write();
