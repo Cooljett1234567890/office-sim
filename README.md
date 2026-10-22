@@ -97,7 +97,7 @@ Documents / Downloads / Pictures`):
 
 ```
 index.html          entry point
-css/style.css       all styling (office, OS shell, management UIs)
+css/style.css       all styling (office, OS shell, management UIs, touch controls)
 js/persist.js       versioned save layer + migration + export/import
 js/state.js         global sim state, achievements, lookups
 js/audio.js         synthesized SFX + ambient music
@@ -106,15 +106,24 @@ js/vfs.js           shared per-employee virtual filesystem
 js/office.js        canvas renderer, camera, day/night, character art
 js/employees.js     behavior AI, pathing, schedules
 js/memory.js        events, memories, relationships, running jokes, discoveries
-js/company.js       finances, projects, productivity, hiring/firing, expansion
+js/company.js       finances, projects, productivity, hiring/firing, expansion, investors
+js/biz.js           GLASSWING launch economy + interactive investor meetings engine
 js/player.js        character creation, the boss as a physical character, interactions
 js/events.js        day cycle, meetings, random office events, day rollover
 js/desktop.js       AcornOS shell + window manager
 js/apps.js          built-in apps (Explorer, chat, mail, paint, terminal…)
-js/mgmt.js          SynergyHQ dashboard, Investor Relations, Hiring Board
+js/mgmt.js          SynergyHQ dashboard (teams, GLASSWING launch), Investor Relations, Hiring Board
 js/browser.js       tabbed browser, fake sites, YouTube embeds
-js/main.js          boot, input, game loop
+js/main.js          boot, input (keyboard + touch), game loop
 ```
+
+## Mobile & touch
+
+On touch devices the game shows a virtual joystick plus Interact (E) and
+camera-recenter buttons; the office view supports tap-to-inspect, drag-to-pan
+and pinch-to-zoom; the AcornOS desktop opens apps with a single tap and its
+windows are touch-draggable and clamped to the screen. Desktop play with
+WASD/mouse is unchanged.
 
 ## Financial formulas (as implemented)
 
