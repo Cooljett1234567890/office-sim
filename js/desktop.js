@@ -78,7 +78,11 @@ const Desktop = (() => {
     for (const ic of Apps.desktopIcons(emp)) {
       const d = el("div", "dt-icon", `<span class="ic">${ic.icon}</span>${ic.label}`);
       d.addEventListener("dblclick", () => { Audio2.click(); openApp(ic.app, ic.args); });
-      d.addEventListener("click", () => { document.querySelectorAll(".dt-icon.sel").forEach(x => x.classList.remove("sel")); d.classList.add("sel"); });
+      d.addEventListener("click", () => {
+        document.querySelectorAll(".dt-icon.sel").forEach(x => x.classList.remove("sel"));
+        d.classList.add("sel");
+        if (window.SYNERGY_TOUCH) { Audio2.click(); openApp(ic.app, ic.args); }
+      });
       icons.appendChild(d);
     }
   }
@@ -93,8 +97,12 @@ const Desktop = (() => {
     const w = {
       key, appId, args: args || {},
       x: 90 + (openWins.length % 6) * 36, y: 40 + (openWins.length % 6) * 30,
-      w: app.w || 640, h: app.h || 440, min: false, max: false,
+      w: Math.min(app.w || 640, Math.max(300, innerWidth - 12)),
+      h: Math.min(app.h || 440, Math.max(240, innerHeight - 60)),
+      min: false, max: false,
     };
+    w.x = clamp(w.x, 0, Math.max(0, innerWidth - w.w));
+    w.y = clamp(w.y, 0, Math.max(0, innerHeight - w.h - 48));
     const node = el("div", "dwin");
     node.innerHTML = `
       <div class="dwin-title">
@@ -109,29 +117,55 @@ const Desktop = (() => {
     w.body = node.querySelector(".dwin-body");
     wins.appendChild(node);
     positionWin(w);
-    // drag
+    // drag (mouse + touch)
     const title = node.querySelector(".dwin-title");
+    const startDrag = (clientX, clientY) => {
+      const sx = clientX - w.x, sy = clientY - w.y;
+      const mv = cx => { w.x = clamp(cx.clientX - sx, -w.w + 80, innerWidth - 60); w.y = clamp(cx.clientY - sy, 0, innerHeight - 90); positionWin(w); };
+      const up = () => { document.removeEventListener("mousemove", mvMouse); document.removeEventListener("mouseup", up); document.removeEventListener("touchmove", mvTouch); document.removeEventListener("touchend", up); };
+      const mvMouse = e2 => mv(e2);
+      const mvTouch = e2 => { e2.preventDefault(); mv(e2.changedTouches[0]); };
+      document.addEventListener("mousemove", mvMouse);
+      document.addEventListener("mouseup", up);
+      document.addEventListener("touchmove", mvTouch, { passive: false });
+      document.addEventListener("touchend", up);
+    };
     title.addEventListener("mousedown", ev => {
       if (ev.target.closest(".dwin-ctrl")) return;
       focusWin(w);
-      const sx = ev.clientX - w.x, sy = ev.clientY - w.y;
-      const mv = e2 => { w.x = clamp(e2.clientX - sx, -w.w + 80, innerWidth - 60); w.y = clamp(e2.clientY - sy, 0, innerHeight - 90); positionWin(w); };
-      const up = () => { document.removeEventListener("mousemove", mv); document.removeEventListener("mouseup", up); };
-      document.addEventListener("mousemove", mv); document.addEventListener("mouseup", up);
+      startDrag(ev.clientX, ev.clientY);
     });
+    title.addEventListener("touchstart", ev => {
+      if (ev.target.closest(".dwin-ctrl")) return;
+      ev.preventDefault();
+      focusWin(w);
+      startDrag(ev.changedTouches[0].clientX, ev.changedTouches[0].clientY);
+    }, { passive: false });
     node.addEventListener("mousedown", () => focusWin(w));
     node.querySelector(".close").addEventListener("click", () => closeWin(w));
     node.querySelector(".mini").addEventListener("click", () => { w.min = true; node.style.display = "none"; renderTasks(); Audio2.pop(); });
     node.querySelector(".maxi").addEventListener("click", () => { w.max = !w.max; node.classList.toggle("maximized", w.max); positionWin(w); Audio2.click(); });
-    // resize
+    // resize (mouse + touch)
     const rz = node.querySelector(".dwin-resize");
+    const startResize = (clientX, clientY) => {
+      const sw = w.w, sh = w.h, sx = clientX, sy = clientY;
+      const mv = cx => { w.w = clamp(sw + cx.clientX - sx, 320, innerWidth); w.h = clamp(sh + cx.clientY - sy, 200, innerHeight); positionWin(w); if (app.onResize) app.onResize(w); };
+      const up = () => { document.removeEventListener("mousemove", mvMouse); document.removeEventListener("mouseup", up); document.removeEventListener("touchmove", mvTouch); document.removeEventListener("touchend", up); };
+      const mvMouse = e2 => mv(e2);
+      const mvTouch = e2 => { e2.preventDefault(); mv(e2.changedTouches[0]); };
+      document.addEventListener("mousemove", mvMouse);
+      document.addEventListener("mouseup", up);
+      document.addEventListener("touchmove", mvTouch, { passive: false });
+      document.addEventListener("touchend", up);
+    };
     rz.addEventListener("mousedown", ev => {
       ev.preventDefault();
-      const sw = w.w, sh = w.h, sx = ev.clientX, sy = ev.clientY;
-      const mv = e2 => { w.w = clamp(sw + e2.clientX - sx, 320, innerWidth); w.h = clamp(sh + e2.clientY - sy, 200, innerHeight); positionWin(w); if (app.onResize) app.onResize(w); };
-      const up = () => { document.removeEventListener("mousemove", mv); document.removeEventListener("mouseup", up); };
-      document.addEventListener("mousemove", mv); document.addEventListener("mouseup", up);
+      startResize(ev.clientX, ev.clientY);
     });
+    rz.addEventListener("touchstart", ev => {
+      ev.preventDefault();
+      startResize(ev.changedTouches[0].clientX, ev.changedTouches[0].clientY);
+    }, { passive: false });
 
     app.render(w.body, w, emp);
     if (app.onArgs && w.args) app.onArgs(w, w.args);
