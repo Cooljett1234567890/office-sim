@@ -88,7 +88,7 @@ const Player = (() => {
   function spawn() {
     const p = SAVE.player;
     entity = {
-      id: 0, isPlayer: true,
+      id: 0, isPlayer: true, seed: Math.random() * 10,
       name: p.name, first: p.first, role: "Director",
       personality: p.personality,
       palette: { body: OUTFITS[p.outfit], hair: HAIRCOLORS[p.hairColor], skin: SKINS[p.skin] },

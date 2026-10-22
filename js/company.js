@@ -30,6 +30,7 @@ const Company = (() => {
       id,
       first: def.first, last: def.last, name: def.first + " " + def.last,
       role: def.role, personality: def.personality,
+      ai: PERSONALITY_AI[def.personality] || PERSONALITY_AI.social,
       desk: def.desk, seed: Math.random() * 10,
       palette: def.palette || PALETTES[id % PALETTES.length],
       hairStyle: def.hairStyle || pick(["flat", "bun", "long", "flat", "curly"]),

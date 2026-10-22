@@ -94,7 +94,7 @@ const Employees = (() => {
 
   /* ---------- decisions ---------- */
   function decide(e) {
-    const ai = e.ai;
+    const ai = e.ai || PERSONALITY_AI[e.personality] || PERSONALITY_AI.social;
     const r = Math.random();
     // schedule overrides
     if ((e.personality === "workaholic" || (e.pWorkBoost || 0) > 0) && r < ai.pWork + (e.pWorkBoost || 0)) return actWork(e);
